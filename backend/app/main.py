@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from app.config import settings
 from app.database import create_tables
-from app.routers import auth_router
+from app.routers import auth_router, search_history_router
 from app.schemas import ApiResponse
 
 
@@ -20,7 +20,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title=settings.app_name,
-    description="Enterprise PDF Vector Search Engine API",
+    description="PDF Vector Search Engine API",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -54,7 +54,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 
 # Include routers
-app.include_router(auth_router, prefix="/api")
+app.include_router(auth_router, prefix="/api/auth")
+app.include_router(search_history_router, prefix="/api")
 
 
 # Health check endpoint

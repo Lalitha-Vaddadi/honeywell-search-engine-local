@@ -25,7 +25,7 @@ from app.services.auth import (
 from app.dependencies import get_current_user
 
 
-router = APIRouter(prefix="/auth", tags=["Authentication"])
+router = APIRouter(tags=["Authentication"])
 
 
 @router.post("/register", response_model=ApiResponse)
