@@ -5,7 +5,6 @@ import {
   RegisterPage,
   DashboardPage,
   SearchPage,
-  DocumentsPage,
   ViewerPage,
 } from '@/pages';
 import { ROUTES } from '@/utils/constants';
@@ -41,11 +40,7 @@ export const router = createBrowserRouter([
   },
   {
     path: ROUTES.DOCUMENTS,
-    element: (
-      <ProtectedRoute>
-        <DocumentsPage />
-      </ProtectedRoute>
-    ),
+    element: <Navigate to={ROUTES.DASHBOARD} replace />,
   },
   {
     path: ROUTES.VIEWER,

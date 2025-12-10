@@ -1,5 +1,4 @@
 import { Navigate } from 'react-router-dom';
-import { HiDocumentText } from 'react-icons/hi';
 import { LoginForm } from '@/components/auth';
 import { useAuth } from '@/hooks/useAuth';
 import { APP_NAME, ROUTES } from '@/utils/constants';
@@ -17,7 +16,6 @@ export function LoginPage() {
       <div className={styles.card}>
         <div className={styles.header}>
           <div className={styles.logo}>
-            <HiDocumentText size={32} />
             <span>{APP_NAME}</span>
           </div>
           <h1 className={styles.title}>Welcome back</h1>

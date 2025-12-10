@@ -1,40 +1,49 @@
-import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { HiSearch, HiDocumentText } from 'react-icons/hi';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { HiSearch, HiDocumentText, HiArrowLeft } from 'react-icons/hi';
 import { Header } from '@/components/layout/Header';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { Button, Loader } from '@/components/common';
 import { searchApi } from '@/api';
-import { CONFIDENCE_THRESHOLDS } from '@/utils/constants';
+import { CONFIDENCE_THRESHOLDS, ROUTES } from '@/utils/constants';
 import type { SearchResult } from '@/types';
 import styles from './SearchPage.module.css';
 
 export function SearchPage() {
   const navigate = useNavigate();
-  const [query, setQuery] = useState('');
+  const [searchParams] = useSearchParams();
+  const queryParam = searchParams.get('q') || '';
+  
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searchTime, setSearchTime] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
-  const handleSearch = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!query.trim()) return;
+  // Execute search when query param changes
+  useEffect(() => {
+    const executeSearch = async () => {
+      if (!queryParam.trim()) {
+        navigate(ROUTES.DASHBOARD);
+        return;
+      }
 
-    setIsLoading(true);
-    setHasSearched(true);
+      setIsLoading(true);
+      setHasSearched(true);
 
-    try {
-      const response = await searchApi.search({ query: query.trim(), limit: 20 });
-      setResults(response.data.results);
-      setSearchTime(response.data.searchTime);
-    } catch (error) {
-      console.error('Search failed:', error);
-      setResults([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      try {
+        const response = await searchApi.search({ query: queryParam.trim(), limit: 20 });
+        setResults(response.data.results);
+        setSearchTime(response.data.searchTime);
+      } catch (error) {
+        console.error('Search failed:', error);
+        setResults([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    executeSearch();
+  }, [queryParam, navigate]);
 
   const getScoreClass = (score: number) => {
     if (score >= CONFIDENCE_THRESHOLDS.HIGH) return styles.high;
@@ -50,35 +59,25 @@ export function SearchPage() {
     <>
       <Header />
       <PageContainer
-        title="Search Documents"
-        description="Find relevant content across all your PDF documents"
+        title="Search Results"
+        action={
+          <Button
+            variant="secondary"
+            leftIcon={<HiArrowLeft size={18} />}
+            onClick={() => navigate(ROUTES.DASHBOARD)}
+          >
+            Back
+          </Button>
+        }
       >
-        <div className={styles.searchSection}>
-          <form className={styles.searchForm} onSubmit={handleSearch}>
-            <div className={styles.searchInputWrapper}>
-              <input
-                type="text"
-                className={styles.searchInput}
-                placeholder="Enter a phrase or sentence to search..."
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                autoFocus
-              />
-            </div>
-            <Button
-              type="submit"
-              size="lg"
-              leftIcon={<HiSearch size={20} />}
-              isLoading={isLoading}
-              className={styles.searchButton}
-            >
-              Search
-            </Button>
-          </form>
+        {/* Show the query */}
+        <div className={styles.queryDisplay}>
+          <span className={styles.queryLabel}>Results for:</span>
+          <span className={styles.queryText}>"{queryParam}"</span>
         </div>
 
         {isLoading && (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--spacing-2xl)' }}>
+          <div className={styles.loadingContainer}>
             <Loader size="lg" text="Searching documents..." />
           </div>
         )}
@@ -91,7 +90,7 @@ export function SearchPage() {
               </span>
               {searchTime !== null && (
                 <span className={styles.searchTime}>
-                  Search completed in {searchTime.toFixed(3)}s
+                  in {searchTime.toFixed(3)}s
                 </span>
               )}
             </div>
@@ -134,16 +133,6 @@ export function SearchPage() {
               </div>
             )}
           </>
-        )}
-
-        {!isLoading && !hasSearched && (
-          <div className={styles.emptyState}>
-            <HiSearch size={48} className={styles.emptyIcon} />
-            <h3 className={styles.emptyTitle}>Start searching</h3>
-            <p className={styles.emptyDescription}>
-              Enter a phrase or sentence to find relevant content in your documents
-            </p>
-          </div>
         )}
       </PageContainer>
     </>

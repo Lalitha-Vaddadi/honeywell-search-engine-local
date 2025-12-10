@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { Link, NavLink } from 'react-router-dom';
-import { HiSearch, HiDocumentText, HiLogout, HiChevronDown } from 'react-icons/hi';
+import { Link } from 'react-router-dom';
+import { HiLogout, HiChevronDown } from 'react-icons/hi';
 import { useAuth } from '@/hooks/useAuth';
 import { APP_NAME, ROUTES } from '@/utils/constants';
 import styles from './Header.module.css';
@@ -33,33 +33,11 @@ export function Header() {
   return (
     <header className={styles.header}>
       <Link to={ROUTES.DASHBOARD} className={styles.logo}>
-        <HiDocumentText className={styles.logoIcon} />
         <span>{APP_NAME}</span>
       </Link>
 
       {isAuthenticated && (
         <>
-          <nav className={styles.nav}>
-            <NavLink
-              to={ROUTES.SEARCH}
-              className={({ isActive }) =>
-                `${styles.navLink} ${isActive ? styles.active : ''}`
-              }
-            >
-              <HiSearch size={18} />
-              Search
-            </NavLink>
-            <NavLink
-              to={ROUTES.DOCUMENTS}
-              className={({ isActive }) =>
-                `${styles.navLink} ${isActive ? styles.active : ''}`
-              }
-            >
-              <HiDocumentText size={18} />
-              Documents
-            </NavLink>
-          </nav>
-
           <div className={styles.userSection}>
             <div className={styles.userMenu} ref={dropdownRef}>
               <button
