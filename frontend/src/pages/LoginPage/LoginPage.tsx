@@ -18,8 +18,7 @@ export function LoginPage() {
           <div className={styles.logo}>
             <span>{APP_NAME}</span>
           </div>
-          <h1 className={styles.title}>Welcome back</h1>
-          <p className={styles.subtitle}>Sign in to your account to continue</p>
+          <h1 className={styles.title}>Log In</h1>
         </div>
         <LoginForm />
       </div>
