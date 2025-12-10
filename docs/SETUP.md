@@ -65,17 +65,29 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Copy environment file
+# Copy environment file (if not exists)
 cp .env.example .env
 
-# Run database migrations
-alembic upgrade head
-
 # Start development server
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --port 8000
 ```
 
 Backend API will be available at: http://localhost:8000
+
+**Note:** Database tables are automatically created on first startup. No manual migrations needed for initial setup.
+
+### 5. Default Test User
+
+After starting the backend, you can register a new user via:
+- **Frontend:** Navigate to http://localhost:5174/register
+- **API:** POST to http://localhost:8000/api/auth/register with JSON body:
+  ```json
+  {
+    "email": "test@example.com",
+    "password": "password123",
+    "name": "Test User"
+  }
+  ```
 
 ---
 
@@ -84,9 +96,9 @@ Backend API will be available at: http://localhost:8000
 ### PostgreSQL
 - Host: `localhost`
 - Port: `5432`
-- Database: `searchdb`
-- User: `postgres`
-- Password: `postgres`
+- Database: `pdfmeta`
+- User: `pdfuser`
+- Password: `pdfpass`
 
 ### MinIO
 - Endpoint: `localhost:9000`
