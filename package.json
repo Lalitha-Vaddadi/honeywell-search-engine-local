@@ -15,7 +15,7 @@
   "docker:up": "cd docker && docker-compose -f docker-compose.dev.yml up -d",
   "docker:down": "cd docker-compose.dev.yml down",
   "docker:logs": "cd docker && docker-compose -f docker-compose.dev.yml logs -f",
-  "start": "npm run docker:up && timeout /t 5 && npm run dev",
+  "start": "npm run docker:up && timeout /t 5 && npm run dev",  
   "stop": "npm run docker:down",
   "install:all": "cd frontend && npm install"
 }
