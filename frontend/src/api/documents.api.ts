@@ -1,67 +1,51 @@
-import apiClient from './client';
-import type { 
-  ApiResponse, 
-  Document, 
-  DocumentListResponse, 
-  DocumentListParams,
-  DocumentUploadResponse,
-  DocumentStatusResponse 
-} from '@/types';
+import { apiClient } from "@/api";
+import type { ApiResponse, Document } from "@/types";
+
+// Add auth header for blob downloads
+function authHeaders() {
+  const token = localStorage.getItem("access_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export const documentsApi = {
-  getDocuments: async (params?: DocumentListParams): Promise<ApiResponse<DocumentListResponse>> => {
-    const response = await apiClient.get<ApiResponse<DocumentListResponse>>('/documents', { params });
-    return response.data;
-  },
+  // List PDFs
+  getDocuments: () =>
+    apiClient.get<ApiResponse<{ documents: Document[]; total: number }>>(
+      "/documents"
+    ),
 
-  getDocument: async (id: string): Promise<ApiResponse<Document>> => {
-    const response = await apiClient.get<ApiResponse<Document>>(`/documents/${id}`);
-    return response.data;
-  },
+  // Get metadata of a PDF
+  getDocument: (id: string) =>
+    apiClient.get<ApiResponse<Document>>(`/documents/${id}`),
 
-  uploadDocuments: async (
-    files: File[],
-    onUploadProgress?: (progress: number) => void
-  ): Promise<ApiResponse<DocumentUploadResponse>> => {
+  // Download PDF blob for viewer
+  getDocumentFile: (id: string) =>
+    apiClient.get<Blob>(`/documents/${id}/file`, {
+      responseType: "blob",
+      headers: {
+        ...authHeaders(),
+      },
+    }).then(res => res.data), // IMPORTANT: return Blob, not AxiosResponse
+
+  // Upload PDF(s)
+  uploadDocuments: (files: File[], onProgress?: (p: number) => void) => {
     const formData = new FormData();
-    files.forEach((file) => {
-      formData.append('files', file);
+    files.forEach(file => formData.append("files", file));
+
+    return apiClient.post("/documents/upload", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+        ...authHeaders(),
+      },
+      onUploadProgress: evt => {
+        if (onProgress && evt.total) {
+          onProgress(Math.round((evt.loaded * 100) / evt.total));
+        }
+      },
     });
-
-    const response = await apiClient.post<ApiResponse<DocumentUploadResponse>>(
-      '/documents/upload',
-      formData,
-      {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total && onUploadProgress) {
-            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            onUploadProgress(progress);
-          }
-        },
-      }
-    );
-    return response.data;
   },
 
-  deleteDocument: async (id: string): Promise<ApiResponse<null>> => {
-    const response = await apiClient.delete<ApiResponse<null>>(`/documents/${id}`);
-    return response.data;
-  },
-
-  getDocumentStatus: async (id: string): Promise<ApiResponse<DocumentStatusResponse>> => {
-    const response = await apiClient.get<ApiResponse<DocumentStatusResponse>>(`/documents/${id}/status`);
-    return response.data;
-  },
-
-  getDocumentFile: async (id: string): Promise<Blob> => {
-    const response = await apiClient.get(`/documents/${id}/file`, {
-      responseType: 'blob',
-    });
-    return response.data;
-  },
+  // Delete PDF
+  deleteDocument: (id: string) =>
+    apiClient.delete<ApiResponse>(`/documents/${id}`),
 };
-
-export default documentsApi;
