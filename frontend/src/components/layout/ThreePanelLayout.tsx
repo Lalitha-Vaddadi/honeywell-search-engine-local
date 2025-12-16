@@ -1,13 +1,13 @@
 import React from "react";
 import type { ReactNode } from "react";
-import styles from './ThreePanelLayout.module.css';
+// import styles from "./ThreePanelLayout.module.css";
 
 interface Props {
   left?: ReactNode;
   center?: ReactNode;
   right?: ReactNode;
-  leftWidth?: number;   // default 280
-  rightWidth?: number;  // default 320
+  leftWidth?: number;
+  rightWidth?: number;
 }
 
 export function ThreePanelLayout({
@@ -18,20 +18,29 @@ export function ThreePanelLayout({
   rightWidth = 320,
 }: Props) {
   return (
-    <div className={styles.root}>
-      <div className={styles.inner}>
-        <aside className={styles.left} style={{ width: `${leftWidth}px` }}>
-          {left}
-        </aside>
+    <div
+      style={{
+        height: "100%",
+        display: "flex",
+        overflow: "hidden",
+      }}
+    >
+      <aside style={{ width: leftWidth, overflowY: "auto" }}>
+        {left}
+      </aside>
 
-        <main className={styles.center}>
-          {center}
-        </main>
+      <main
+        style={{
+          flex: 1,
+          overflow: "hidden",
+        }}
+      >
+        {center}
+      </main>
 
-        <aside className={styles.right} style={{ width: `${rightWidth}px` }}>
-          {right}
-        </aside>
-      </div>
+      <aside style={{ width: rightWidth, overflowY: "auto" }}>
+        {right}
+      </aside>
     </div>
   );
 }

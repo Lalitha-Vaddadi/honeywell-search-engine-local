@@ -319,3 +319,41 @@ async def delete_document(
     await db.commit()
 
     return ApiResponse(success=True, message="Document deleted")
+# --------------------------------------------------------------------------------
+#  DELETE ALL PDFs (USER-SCOPED)
+# --------------------------------------------------------------------------------
+@router.delete("")
+async def delete_all_documents(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Fetch all user documents
+    result = await db.execute(
+        select(PDFMetadata)
+        .where(PDFMetadata.uploaded_by == current_user.id)
+    )
+    docs = result.scalars().all()
+
+    if not docs:
+        return ApiResponse(success=True, message="No documents to delete")
+
+    object_keys = [doc.object_key for doc in docs]
+
+    # 1. Delete files from MinIO (best-effort)
+    for key in object_keys:
+        try:
+            minio_client.remove_object(settings.minio_bucket, key)
+        except Exception:
+            pass
+
+    # 2. Delete DB rows (chunks are already FK-linked)
+    for doc in docs:
+        await db.delete(doc)
+
+    await db.commit()
+
+    return ApiResponse(
+        success=True,
+        message=f"Deleted {len(docs)} document(s)"
+    )
+

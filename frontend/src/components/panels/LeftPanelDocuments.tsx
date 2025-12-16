@@ -8,6 +8,8 @@ import type { Document } from '@/types';
 import { Button, Loader } from '@/components/common';
 import styles from '@/pages/DocumentsPage/DocumentsPage.module.css';
 
+
+
 export function LeftPanelDocuments({
   onSelectDocument,
 }: {
@@ -98,7 +100,34 @@ export function LeftPanelDocuments({
         </div>
       )}
 
-      <h3 style={{ marginBottom: '10px' }}>Your PDFs</h3>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "10px",
+        }}
+      >
+        <h3 style={{ margin: 0 }}>Your PDFs</h3>
+
+        <button
+          onClick={async () => {
+            if (!confirm("Delete all PDFs? This cannot be undone.")) return;
+            await documentsApi.deleteAllDocuments();
+            setDocuments([]);
+          }}
+          style={{
+            color: "var(--color-error)",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            fontWeight: 600,
+          }}
+        >
+          Clear All
+        </button>
+      </div>
+
 
       {isLoading ? <Loader text="Loading..." /> : documents.length === 0 ? (
         <p>No documents</p>
@@ -127,9 +156,10 @@ export function LeftPanelDocuments({
                 {doc.filename}
               </div>
 
-              <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                {formatFileSize(doc.file_size)} • {formatRelativeTime(doc.created_at)}
+                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                    {formatFileSize(doc.file_size)} • {formatRelativeTime(doc.created_at)}
               </div>
+
             </div>
 
             <button

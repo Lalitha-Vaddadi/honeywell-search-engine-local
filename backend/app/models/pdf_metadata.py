@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
 
 
+
 class ProcessingStatus(str, Enum):
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
@@ -36,7 +37,6 @@ class PDFMetadata(Base):
         nullable=True,
     )
     page_count: Mapped[int] = mapped_column(
-        Integer,
         nullable=True,
     )
     status: Mapped[ProcessingStatus] = mapped_column(
