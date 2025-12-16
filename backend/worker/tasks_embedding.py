@@ -55,6 +55,7 @@ def embed_pdf(pdf_id: str):
                 "pdf_id": pdf_id,
                 "page": r.page_num,
                 "chunk_index": r.chunk_index,
+                "text":r.chunk_text
             })
 
         embeddings = generate_embeddings(texts)
