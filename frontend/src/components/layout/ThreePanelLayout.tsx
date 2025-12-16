@@ -1,6 +1,4 @@
-import React from "react";
 import type { ReactNode } from "react";
-// import styles from "./ThreePanelLayout.module.css";
 
 interface Props {
   left?: ReactNode;
@@ -22,24 +20,56 @@ export function ThreePanelLayout({
       style={{
         height: "100%",
         display: "flex",
+        gap: 12,
+        padding: 12,
+        background: "var(--layout-bg)",
+        color: "var(--panel-text-primary)",
         overflow: "hidden",
       }}
     >
-      <aside style={{ width: leftWidth, overflowY: "auto" }}>
-        {left}
-      </aside>
-
-      <main
+      {/* LEFT PANEL */}
+      <aside
         style={{
-          flex: 1,
+          width: leftWidth,
+          background: "var(--panel-bg)",
+          borderRadius: 16,
+          boxShadow: "var(--panel-shadow)",
+          display: "flex",
+          flexDirection: "column",
           overflow: "hidden",
         }}
       >
-        {center}
+        <div style={{ flex: 1, overflowY: "auto" }}>{left}</div>
+      </aside>
+
+      {/* CENTER PANEL */}
+      <main
+        style={{
+          flex: 1,
+          background: "var(--panel-bg)",
+          borderRadius: 16,
+          boxShadow: "var(--panel-shadow)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ flex: 1, padding: 20 }}>{center}</div>
       </main>
 
-      <aside style={{ width: rightWidth, overflowY: "auto" }}>
-        {right}
+      {/* RIGHT PANEL */}
+      <aside
+        style={{
+          width: rightWidth,
+          background: "var(--panel-bg)",
+          borderRadius: 16,
+          boxShadow: "var(--panel-shadow)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ flex: 1, overflowY: "auto" }}>{right}</div>
       </aside>
     </div>
   );

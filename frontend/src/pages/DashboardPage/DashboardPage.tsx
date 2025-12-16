@@ -12,7 +12,7 @@ export function DashboardPage() {
     <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
       <Header />
 
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, height: "100vh", display: "flex", flexDirection: "column", background: "var(--layout-bg)", }}>
         <ThreePanelLayout
           left={
             <LeftPanelDocuments

@@ -1,14 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { useDropzone } from 'react-dropzone';
-import { HiUpload, HiDocumentText, HiTrash } from 'react-icons/hi';
-import { documentsApi } from '@/api';
-import { formatFileSize, formatRelativeTime } from '@/utils/formatters';
-import { FILE_LIMITS } from '@/utils/constants';
-import type { Document } from '@/types';
-import { Button, Loader } from '@/components/common';
-import styles from '@/pages/DocumentsPage/DocumentsPage.module.css';
-
-
+import React, { useCallback, useEffect, useState } from "react";
+import { useDropzone } from "react-dropzone";
+import { HiUpload, HiTrash } from "react-icons/hi";
+import { documentsApi } from "@/api";
+import { formatFileSize, formatRelativeTime } from "@/utils/formatters";
+import { FILE_LIMITS } from "@/utils/constants";
+import type { Document } from "@/types";
+import { Loader } from "@/components/common";
 
 export function LeftPanelDocuments({
   onSelectDocument,
@@ -22,10 +19,9 @@ export function LeftPanelDocuments({
 
   const fetchDocuments = useCallback(async () => {
     try {
-      const response = await documentsApi.getDocuments();
-      setDocuments(response.data.data.documents);
-    } catch {}
-    finally {
+      const res = await documentsApi.getDocuments();
+      setDocuments(res.data.data.documents);
+    } finally {
       setIsLoading(false);
     }
   }, []);
@@ -35,12 +31,12 @@ export function LeftPanelDocuments({
   }, [fetchDocuments]);
 
   const onDrop = useCallback(
-    async (acceptedFiles: File[]) => {
-      if (acceptedFiles.length === 0) return;
+    async (files: File[]) => {
+      if (!files.length) return;
       setIsUploading(true);
       setUploadProgress(0);
       try {
-        await documentsApi.uploadDocuments(acceptedFiles, (p) => setUploadProgress(p));
+        await documentsApi.uploadDocuments(files, p => setUploadProgress(p));
         await fetchDocuments();
       } finally {
         setIsUploading(false);
@@ -58,69 +54,104 @@ export function LeftPanelDocuments({
   });
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this PDF?')) return;
+    if (!confirm("Delete this PDF?")) return;
     await documentsApi.deleteDocument(id);
     setDocuments(prev => prev.filter(d => d.id !== id));
   };
 
   return (
-    <div style={{ padding: '16px', width: '100%' }}>
-
-      {/* NEW UPLOAD BAR */}
+    <div style={{ padding: 16, color: "var(--panel-text-primary)" }}>
+      {/* ================= Upload Card ================= */}
       <div
         {...getRootProps()}
         style={{
-          padding: '12px 16px',
-          border: '1px solid var(--color-border)',
-          borderRadius: '8px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          cursor: 'pointer',
-          marginBottom: '20px',
-          background: 'white',
-        }}
-      >
-        <span style={{ fontWeight: 600 }}>Upload PDFs</span>
-        <HiUpload size={20} />
-        <input {...getInputProps()} />
-      </div>
-
-      {isUploading && uploadProgress !== null && (
-        <div style={{ marginBottom: '12px' }}>
-          <div style={{ height: '5px', background: '#ddd' }}>
-            <div style={{
-              height: '100%',
-              width: `${uploadProgress}%`,
-              background: 'var(--color-primary)',
-              transition: 'width 0.2s'
-            }} />
-          </div>
-          <p style={{ fontSize: 12 }}>{uploadProgress}%</p>
-        </div>
-      )}
-
-      <div
-        style={{
+          borderRadius: 14,
+          padding: 14,
+          marginBottom: 16,
+          cursor: "pointer",
+          background: "var(--accent-gradient)",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          marginBottom: "10px",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
         }}
       >
-        <h3 style={{ margin: 0 }}>Your PDFs</h3>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.2)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <HiUpload size={18} />
+          </div>
 
+          <div>
+            <div style={{ fontWeight: 600 }}>Upload PDFs</div>
+            <div
+              style={{
+                fontSize: 12,
+                color: "var(--panel-text-muted)",
+              }}
+            >
+              Drag & drop or click to browse
+            </div>
+          </div>
+        </div>
+
+        <input {...getInputProps()} />
+      </div>
+
+      {/* Upload progress */}
+      {isUploading && uploadProgress !== null && (
+        <div style={{ marginBottom: 14 }}>
+          <div
+            style={{
+              height: 6,
+              borderRadius: 6,
+              background: "var(--panel-border)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${uploadProgress}%`,
+                background: "#22c55e",
+                transition: "width 0.2s",
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ================= Header ================= */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 12,
+        }}
+      >
+        <h3 style={{ margin: 0, fontSize: 15 }}>Your PDFs</h3>
         <button
           onClick={async () => {
-            if (!confirm("Delete all PDFs? This cannot be undone.")) return;
+            if (!confirm("Delete all PDFs?")) return;
             await documentsApi.deleteAllDocuments();
             setDocuments([]);
           }}
           style={{
-            color: "var(--color-error)",
             background: "none",
             border: "none",
+            color: "var(--danger)",
             cursor: "pointer",
+            fontSize: 13,
             fontWeight: 600,
           }}
         >
@@ -128,43 +159,72 @@ export function LeftPanelDocuments({
         </button>
       </div>
 
-
-      {isLoading ? <Loader text="Loading..." /> : documents.length === 0 ? (
-        <p>No documents</p>
+      {/* ================= List ================= */}
+      {isLoading ? (
+        <Loader text="Loading..." />
+      ) : documents.length === 0 ? (
+        <p style={{ color: "var(--panel-text-muted)" }}>
+          No documents uploaded
+        </p>
       ) : (
         documents.map(doc => (
           <div
             key={doc.id}
             style={{
-              padding: '10px 0',
-              borderBottom: '1px solid var(--color-border)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: '8px'
+              background: "var(--accent-gradient)",
+              borderRadius: 14,
+              padding: 14,
+              marginBottom: 10,
+              display: "flex",
+              gap: 12,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
             }}
           >
+            {/* Document info */}
             <div
               onClick={() => onSelectDocument?.(doc.id)}
-              style={{ cursor: 'pointer', flex: 1 }}
+              style={{
+                cursor: "pointer",
+                flex: 1,
+                minWidth: 0, // CRITICAL for overflow fix
+              }}
             >
-              {/* show FULL filename */}
-              <div style={{
-                fontWeight: 600,
-                whiteSpace: 'normal',
-                wordBreak: 'break-word'
-              }}>
+              <div
+                style={{
+                  fontWeight: 600,
+                  fontSize: 14,
+                  lineHeight: 1.4,
+                  marginBottom: 6,
+
+                  /* OVERFLOW FIX — SAME AS ORIGINAL LOGIC */
+                  whiteSpace: "normal",
+                  wordBreak: "break-word",
+                }}
+              >
                 {doc.filename}
               </div>
 
-                <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                    {formatFileSize(doc.file_size)} • {formatRelativeTime(doc.created_at)}
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "var(--panel-text-muted)",
+                }}
+              >
+                {formatFileSize(doc.file_size)} •{" "}
+                {formatRelativeTime(doc.created_at)}
               </div>
-
             </div>
 
+            {/* Delete */}
             <button
               onClick={() => handleDelete(doc.id)}
-              style={{ background: 'none', border: 'none', color: 'var(--color-error)' }}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--danger)",
+                cursor: "pointer",
+                alignSelf: "flex-start",
+              }}
             >
               <HiTrash size={18} />
             </button>
