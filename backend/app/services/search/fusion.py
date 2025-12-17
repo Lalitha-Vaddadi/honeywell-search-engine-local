@@ -10,10 +10,12 @@ from app.services.qdrant.qdrant_search import semantic_search
 
 logger = logging.getLogger(__name__)
 
-# Weights tuned for throughput + quality
-SEMANTIC_WEIGHT = 0.6
-LEXICAL_WEIGHT = 0.25
-TRIPLE_WEIGHT = 0.15
+# Weights: favor lexical evidence for precise user wording
+SEMANTIC_WEIGHT = 0.45
+LEXICAL_WEIGHT = 0.35
+TRIPLE_WEIGHT = 0.20
+LEXICAL_PRESENT_BONUS = 0.10
+TRIPLE_PRESENT_BONUS = 0.05
 
 # Top-K per channel before fusion
 SEMANTIC_K = 20
@@ -52,19 +54,20 @@ def semantic_channel(query_vector: List[float], pdf_ids: Sequence[str]) -> List[
 
 
 async def lexical_channel(db: AsyncSession, query: str, pdf_ids: Sequence[UUID]) -> List[Dict]:
-    # Use plainto_tsquery for simplicity; could switch to websearch_to_tsquery for richer operators
-    sql = text(
+    # Primary lexical using postgres full-text
+    ts_sql = text(
         """
         SELECT id, pdf_metadata_id, page_num, chunk_index, chunk_text,
-               ts_rank_cd(lexical_tsv, plainto_tsquery('english', :q)) AS lexical_score
+               ts_rank_cd(lexical_tsv, websearch_to_tsquery('english', :q)) AS lexical_score
         FROM pdf_chunks
         WHERE pdf_metadata_id = ANY(:ids)
-          AND lexical_tsv @@ plainto_tsquery('english', :q)
+          AND lexical_tsv @@ websearch_to_tsquery('english', :q)
         ORDER BY lexical_score DESC
         LIMIT :limit
         """
     )
-    rows = (await db.execute(sql, {"q": query, "ids": list(pdf_ids), "limit": LEXICAL_K})).fetchall()
+
+    rows = (await db.execute(ts_sql, {"q": query, "ids": list(pdf_ids), "limit": LEXICAL_K})).fetchall()
     results = []
     for r in rows:
         results.append({
@@ -75,6 +78,38 @@ async def lexical_channel(db: AsyncSession, query: str, pdf_ids: Sequence[UUID])
             "text": r.chunk_text,
             "lexical_score": float(r.lexical_score or 0.0),
         })
+
+    # Exact-phrase fallback using ILIKE to catch OCR line-breaks/hyphenation issues
+    phrase = " ".join(query.split())  # normalize whitespace only
+    phrase_sql = text(
+        """
+        SELECT id, pdf_metadata_id, page_num, chunk_index, chunk_text
+        FROM pdf_chunks
+        WHERE pdf_metadata_id = ANY(:ids)
+          AND lower(regexp_replace(chunk_text, '(\\w)-\\s+(\\w)', '\\1\\2', 'g')) LIKE lower(:pattern)
+        LIMIT :limit
+        """
+    )
+    phrase_rows = (await db.execute(phrase_sql, {"ids": list(pdf_ids), "pattern": f"%{phrase}%", "limit": 10})).fetchall()
+    seen = {r["chunk_id"] for r in results}
+    for r in phrase_rows:
+        cid = str(r.id)
+        if cid in seen:
+            # Boost existing entry to emphasize literal match
+            for rec in results:
+                if rec["chunk_id"] == cid:
+                    rec["lexical_score"] = max(rec.get("lexical_score", 0.0), 1.0)
+                    break
+            continue
+        results.append({
+            "chunk_id": cid,
+            "pdf_id": str(r.pdf_metadata_id),
+            "page": r.page_num,
+            "chunk_index": r.chunk_index,
+            "text": r.chunk_text,
+            "lexical_score": 1.0,  # strong evidence: literal phrase present
+        })
+
     _normalize_scores(results, "lexical_score")
     return results
 
@@ -139,12 +174,21 @@ def fuse_results(semantic: List[Dict], lexical: List[Dict], triples: List[Dict],
 
     fused = []
     for r in by_chunk.values():
+        lex_norm = r.get("norm_lexical_score", 0.0)
+        triple_norm = r.get("norm_triple_score", 0.0)
         fusion = (
             (r.get("norm_semantic_score", 0.0) * SEMANTIC_WEIGHT) +
-            (r.get("norm_lexical_score", 0.0) * LEXICAL_WEIGHT) +
-            (r.get("norm_triple_score", 0.0) * TRIPLE_WEIGHT)
+            (lex_norm * LEXICAL_WEIGHT) +
+            (triple_norm * TRIPLE_WEIGHT)
         )
-        r["fusion_score"] = fusion
+
+        # Encourage reranking toward chunks that contain the literal wording the user typed
+        if lex_norm > 0:
+            fusion += LEXICAL_PRESENT_BONUS
+        if triple_norm > 0:
+            fusion += TRIPLE_PRESENT_BONUS
+
+        r["fusion_score"] = min(1.0, fusion)
         fused.append(r)
 
     fused.sort(key=lambda x: x.get("fusion_score", 0.0), reverse=True)

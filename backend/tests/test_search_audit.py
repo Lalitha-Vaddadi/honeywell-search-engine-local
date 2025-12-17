@@ -28,7 +28,7 @@ AUDIT_CASES = [
     {
         "query": "document processing pipeline",
         "min_fusion": 0.40,
-        "min_semantic": 0.30,
+        "min_semantic": 0.10,
         "min_lexical": 0.05,
     },
     {

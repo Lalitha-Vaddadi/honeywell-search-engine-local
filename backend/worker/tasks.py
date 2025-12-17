@@ -75,10 +75,13 @@ _HEADER_FOOTER_PATTERN = re.compile(
 )
 _WHITESPACE_PATTERN = re.compile(r"\s+")
 _NON_PRINTABLE_PATTERN = re.compile(r"[^\x09\x0A\x0D\x20-\x7E\u00A0-\uFFFF]+")
+_HYPHEN_BREAK_PATTERN = re.compile(r"(\w)-\s+(\w)")
 
 def regex_clean(text: str) -> str:
     text = _HEADER_FOOTER_PATTERN.sub(" ", text)
     text = _NON_PRINTABLE_PATTERN.sub(" ", text)
+    # Fix PDF line-break hyphenation (e.g., "maxi- mize" → "maximize")
+    text = _HYPHEN_BREAK_PATTERN.sub(r"\1\2", text)
     text = _WHITESPACE_PATTERN.sub(" ", text)
     return text.strip()
 
