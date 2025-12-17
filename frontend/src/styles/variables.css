@@ -1,8 +1,42 @@
-/* =========================================================
-   BASE TOKENS — LIGHT THEME (DEFAULT)
-   ========================================================= */
-
 :root {
+
+   /* ---------- Spacing Scale ---------- */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
+
+  /* ---------- Border Radius ---------- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 9999px;
+
+  /* ---------- Font Sizes ---------- */
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-md: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+
+  /* ---------- Font Weights ---------- */
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* ---------- Shadows ---------- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.12);
+
+  /* ---------- Transitions ---------- */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+
   /* ---------- Backgrounds ---------- */
   --color-bg-primary: #ffffff;
   --color-bg-secondary: #f5f5f5;
@@ -66,9 +100,7 @@
   --text-ellipsis-lines-2: 2;
 }
 
-/* =========================================================
-   DARK THEME
-   ========================================================= */
+/* DARK THEME */
 
 [data-theme="dark"] {
   --color-bg-primary: #0f1115;
@@ -103,13 +135,11 @@
   --doc-card-hover: #20242d;
 }
 
-/* =========================================================
-   BLUE–PINK THEME
-   ========================================================= */
+/* BLUE–PINK THEME */
 
 [data-theme="blue-pink"] {
   --color-bg-primary: #0b1020;
-  --color-bg-secondary: #2a0f14;
+  --color-bg-secondary: #151c33;
   --color-bg-tertiary: #1e1b4b;
 
   --color-text-primary: #e0e7ff;
@@ -139,9 +169,7 @@
   --doc-card-hover: #2b235a;
 }
 
-/* =========================================================
-   CUSTOM THEME
-   ========================================================= */
+/* CUSTOM THEME */
 
 [data-theme="custom"] {
   --color-bg-primary: #111111;
@@ -153,7 +181,7 @@
   --color-text-muted: #888888;
 
   --color-border: #2a2a2a;
-  --color-primary: #00ffcc;
+  --color-primary:  #4b4b4b;
 
   --dropdown-item-hover: #202020;
   --dropdown-item-active: #484b4a;
@@ -168,7 +196,7 @@
   --accent-gradient-soft: linear-gradient(135deg, #0f2f2b 0%, #00bfa6 100%);
   --accent-gradient-strong: linear-gradient(135deg, #005f56 0%, #00ffcc);
 
-    --cta-gradient: linear-gradient(135deg,  #000000 0%,  #626463 100%);
+   --cta-gradient: linear-gradient(135deg,  #000000 0%,  #626463 100%);
 
 
   --input-bg: #202020;

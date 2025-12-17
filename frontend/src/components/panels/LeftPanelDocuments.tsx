@@ -61,7 +61,7 @@ export function LeftPanelDocuments({
 
   return (
     <div style={{ padding: 16, color: "var(--panel-text-primary)" }}>
-      {/* ================= Upload Card ================= */}
+      {/* Upload Card */}
       <div
         {...getRootProps()}
         style={{
@@ -130,7 +130,7 @@ export function LeftPanelDocuments({
         </div>
       )}
 
-      {/* ================= Header ================= */}
+      {/* Header  */}
       <div
         style={{
           display: "flex",
@@ -159,7 +159,7 @@ export function LeftPanelDocuments({
         </button>
       </div>
 
-      {/* ================= List ================= */}
+      {/* List*/}
       {isLoading ? (
         <Loader text="Loading..." />
       ) : documents.length === 0 ? (
