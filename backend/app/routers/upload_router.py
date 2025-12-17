@@ -11,6 +11,7 @@ from app.models.user import User
 from app.schemas import ApiResponse
 from app.dependencies import get_current_user
 from worker.tasks import process_pdf
+from app.services.qdrant.qdrant_client import delete_pdf_vectors
 import uuid
 from typing import List
 
@@ -294,6 +295,13 @@ async def delete_document(
     try:
         minio_client.remove_object(settings.minio_bucket, document.object_key)
     except S3Error:
+        pass
+
+    # Remove vectors from Qdrant (best-effort)
+    try:
+        delete_pdf_vectors(str(document.id))
+    except Exception:
+        # Do not block deletion if vector cleanup fails
         pass
 
     await db.delete(document)

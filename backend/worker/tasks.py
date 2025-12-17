@@ -91,7 +91,7 @@ def init_spacy():
         except Exception:
             _spacy_nlp = None
 
-def clean_text(text: str, use_spacy: bool = True) -> str:
+def clean_text(text: str, use_spacy: bool = False) -> str:
     text = regex_clean(text)
     if use_spacy and _SPACY_AVAILABLE:
         try:
@@ -120,7 +120,7 @@ from .chunking import chunk_document_page, token_count
 # CELERY TASK (SYNC, SAFE)
 # ------------------------------------------------------
 @celery_app.task(name="process_pdf")
-def process_pdf(pdf_id: str, object_key: str, use_spacy: bool = True):
+def process_pdf(pdf_id: str, object_key: str, use_spacy: bool = False):
     db = SessionLocal()
     tmp_path = None
 
@@ -140,7 +140,8 @@ def process_pdf(pdf_id: str, object_key: str, use_spacy: bool = True):
 
         inserts = 0
         for page_num, page_text in pages:
-            cleaned = clean_text(page_text, use_spacy)
+            # Embed raw-ish text (only regex cleaned) to preserve phrases; avoid lemmatization/stopword drop
+            cleaned = clean_text(page_text, use_spacy=False)
             
             # 🔥 Advanced chunking: creates parent + child chunks
             parents, children = chunk_document_page(cleaned, page_num)

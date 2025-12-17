@@ -51,6 +51,7 @@ def semantic_search(
             "page": payload.get("page") if payload else None,
             "chunk_index": payload.get("chunk_index") if payload else None,
             "text": payload.get("text") if payload else None,
+            "parent_text": payload.get("parent_text") if payload else None,
         })
 
     return formatted

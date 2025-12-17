@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 from typing import Optional
 import bcrypt
@@ -25,7 +25,7 @@ def hash_password(password: str) -> str:
 
 def create_access_token(user_id: UUID) -> str:
     """Create a JWT access token."""
-    expire = datetime.utcnow() + timedelta(minutes=settings.access_token_expire_minutes)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
     to_encode = {
         "sub": str(user_id),
         "exp": expire,
@@ -36,7 +36,7 @@ def create_access_token(user_id: UUID) -> str:
 
 def create_refresh_token(user_id: UUID) -> str:
     """Create a JWT refresh token."""
-    expire = datetime.utcnow() + timedelta(days=settings.refresh_token_expire_days)
+    expire = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
     to_encode = {
         "sub": str(user_id),
         "exp": expire,
