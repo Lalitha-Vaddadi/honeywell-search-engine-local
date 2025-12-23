@@ -81,6 +81,7 @@ export function RightPanelSearchChat({ onOpenResult }: Props) {
               borderRadius: 14,
               border: "none",
               background: "var(--accent-gradient)",
+              color: "var(--panel-text-primary)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
