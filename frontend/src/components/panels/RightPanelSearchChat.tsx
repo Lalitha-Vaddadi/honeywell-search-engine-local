@@ -5,7 +5,11 @@ import { SearchResults } from "../search/SearchResults"
 import type { SearchResult } from "@/types"
 
 interface Props {
-  onOpenResult: (documentId: string, page: number) => void
+  onOpenResult: (
+    documentId: string,
+    page: number,
+    highlightText: string
+  ) => void
 }
 
 export function RightPanelSearchChat({ onOpenResult }: Props) {
@@ -34,44 +38,24 @@ export function RightPanelSearchChat({ onOpenResult }: Props) {
   }
 
   return (
-    <div
-      style={{
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      {/* RESULTS */}
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ flex: 1, overflowY: "auto" }}>
         <SearchResults
           results={results}
-          onSelect={(r) => onOpenResult(r.documentId, r.pageNumber)}
+          onSelect={(r) =>
+            onOpenResult(r.documentId, r.pageNumber, r.snippet)
+          }
         />
       </div>
 
-      {/* BOTTOM SEARCH BAR — DABBA PRESERVED */}
-      <div
-        style={{
-          padding: 12,
-          borderTop: "none",
-          background: "var(--panel-bg)",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
+      <div style={{ padding: 12, background: "var(--panel-bg)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleSearch()
-            }}
+            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             placeholder="Search documents"
             disabled={loading}
             style={{
@@ -84,7 +68,6 @@ export function RightPanelSearchChat({ onOpenResult }: Props) {
               color: "var(--panel-text-primary)",
               outline: "none",
               fontSize: 14,
-              boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
             }}
           />
 
@@ -98,13 +81,10 @@ export function RightPanelSearchChat({ onOpenResult }: Props) {
               borderRadius: 14,
               border: "none",
               background: "var(--accent-gradient)",
-              color: "var(--accent-gradient)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               cursor: "pointer",
-              flexShrink: 0,
-              boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
             }}
           >
             <HiSearch size={20} />
@@ -112,13 +92,7 @@ export function RightPanelSearchChat({ onOpenResult }: Props) {
         </div>
 
         {error && (
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 12,
-              color: "var(--color-error)",
-            }}
-          >
+          <div style={{ marginTop: 6, fontSize: 12, color: "var(--color-error)" }}>
             {error}
           </div>
         )}

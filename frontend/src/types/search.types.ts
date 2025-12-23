@@ -25,6 +25,9 @@ export interface SearchResult {
     lexical: number;
     triple: number;
   };
+  highlightText: string
+  rawChunkText: string
+
 }
 
 export interface SearchRequest {

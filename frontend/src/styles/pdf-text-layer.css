@@ -1,0 +1,22 @@
+/* Minimal pdf.js text layer styles */
+
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0.25;
+  line-height: 1;
+}
+
+.textLayer span {
+  position: absolute;
+  white-space: pre;
+  transform-origin: 0% 0%;
+  color: transparent;
+  cursor: text;
+}
+
+.textLayer .highlight {
+  background: rgba(255, 215, 0, 0.6);
+  border-radius: 3px;
+}

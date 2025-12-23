@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react"
-import { useParams, useSearchParams, useNavigate } from "react-router-dom"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useParams, useNavigate, useLocation } from "react-router-dom"
 import { Document, Page, pdfjs } from "react-pdf"
 import {
   HiArrowLeft,
@@ -7,170 +7,214 @@ import {
   HiChevronRight,
   HiZoomIn,
   HiZoomOut,
-  HiExclamation,
 } from "react-icons/hi"
-import { Button, Loader } from "@/components/common"
 import { documentsApi } from "@/api"
 import { ROUTES } from "@/utils/constants"
 import styles from "./ViewerPage.module.css"
 
-import "react-pdf/dist/Page/AnnotationLayer.css"
 import "react-pdf/dist/Page/TextLayer.css"
+import "react-pdf/dist/Page/AnnotationLayer.css"
 
-// FIXED WORKER SETUP FOR VITE
-import workerSrc from "pdfjs-dist/build/pdf.worker.mjs?url"
-pdfjs.GlobalWorkerOptions.workerSrc = workerSrc
+/* --------------------------------------------------
+   PDF worker
+-------------------------------------------------- */
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.js",
+  import.meta.url
+).toString()
 
-export function ViewerPage({
-  documentIdOverride,
-  pageOverride,
-}: {
+/* --------------------------------------------------
+   Normalization (must match backend)
+-------------------------------------------------- */
+const normalize = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^\w\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+
+interface ViewerPageProps {
   documentIdOverride?: string
   pageOverride?: number
-}) {
-  const params = useParams<{ documentId: string }>()
-  const urlId = params.documentId
-  const documentId = documentIdOverride || urlId
+  highlightTextOverride?: string | null
+  embedded?: boolean
+}
 
-  const [searchParams] = useSearchParams()
+export default function ViewerPage({
+  documentIdOverride,
+  pageOverride,
+  highlightTextOverride,
+  embedded = false,
+}: ViewerPageProps) {
+  const params = useParams<{ documentId: string }>()
+  const location = useLocation()
   const navigate = useNavigate()
+
+  const documentId = documentIdOverride || params.documentId
+
+  const highlightRaw =
+    highlightTextOverride ??
+    (location.state as any)?.highlightText ??
+    ""
+
+  const highlightText = useMemo(
+    () => normalize(highlightRaw),
+    [highlightRaw]
+  )
+
+  const pageContainerRef = useRef<HTMLDivElement>(null)
 
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null)
   const [numPages, setNumPages] = useState(0)
-  const [currentPage, setCurrentPage] = useState(pageOverride || 1)
+  const [page, setPage] = useState(pageOverride || 1)
   const [scale, setScale] = useState(1.0)
-  const [isLoading, setIsLoading] = useState(true)
+  const [docName, setDocName] = useState("")
   const [error, setError] = useState<string | null>(null)
-  const [documentName, setDocumentName] = useState("")
 
+  /* -------- Load PDF -------- */
   useEffect(() => {
-    const loadDocument = async () => {
-      if (!documentId) {
-        setError("No document ID provided")
-        setIsLoading(false)
-        return
-      }
+    if (!documentId) return
 
+    const load = async () => {
       try {
-        setIsLoading(true)
-        setError(null)
-
         const meta = await documentsApi.getDocument(documentId)
-        setDocumentName(meta.data.filename)
+        setDocName(meta.data.filename)
 
-        // 🔑 KEY FIX: keep blob, do NOT convert to object URL
         const blob = await documentsApi.getDocumentFile(documentId)
         setPdfBlob(blob)
 
         if (pageOverride) {
-          setCurrentPage(pageOverride)
-        } else {
-          const pageFromUrl = searchParams.get("page")
-          if (pageFromUrl) setCurrentPage(parseInt(pageFromUrl, 10))
+          setPage(pageOverride)
         }
-      } catch (err) {
-        console.error("Failed to load PDF:", err)
-        setError("Failed to load PDF file")
-      } finally {
-        setIsLoading(false)
+      } catch {
+        setError("Failed to load PDF")
       }
     }
 
-    loadDocument()
+    load()
   }, [documentId, pageOverride])
 
-  const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
-    setNumPages(numPages)
-  }
+  /* -------- Highlight text (text layer) -------- */
+  useEffect(() => {
+    if (!highlightText || !pageContainerRef.current) return
 
-  const goToPage = (page: number) => {
-    if (page >= 1 && page <= numPages) setCurrentPage(page)
-  }
+    const timeout = setTimeout(() => {
+      const container = pageContainerRef.current!
 
-  const zoomIn = () => setScale((s) => Math.min(s + 0.25, 3))
-  const zoomOut = () => setScale((s) => Math.max(s - 0.25, 0.5))
+      const spans = Array.from(
+        container.querySelectorAll<HTMLSpanElement>(
+          ".react-pdf__Page__textContent span"
+        )
+      )
+
+      spans.forEach(s => (s.innerHTML = s.textContent || ""))
+
+      const fullText = spans
+        .map(s => normalize(s.textContent || ""))
+        .join(" ")
+
+      const matchIndex = fullText.indexOf(highlightText)
+      if (matchIndex === -1) return
+
+      let charPos = 0
+      let firstHit: HTMLElement | null = null
+
+      for (const span of spans) {
+        const raw = span.textContent || ""
+        const norm = normalize(raw)
+
+        const start = charPos
+        const end = charPos + norm.length
+
+        if (
+          end >= matchIndex &&
+          start <= matchIndex + highlightText.length &&
+          raw.trim()
+        ) {
+          span.innerHTML = `<mark style="background:#ffe58a;padding:0;">${raw}</mark>`
+          if (!firstHit) firstHit = span
+        }
+
+        charPos += norm.length + 1
+      }
+
+      firstHit?.scrollIntoView({ behavior: "smooth", block: "center" })
+    }, 300)
+
+    return () => clearTimeout(timeout)
+  }, [highlightText, page, scale])
+
+  if (error) {
+    return <div className={styles.error}>{error}</div>
+  }
 
   return (
     <div className={styles.container}>
-      {/* Toolbar */}
-      <div className={styles.toolbar}>
-        <div className={styles.toolbarLeft}>
-          <Button
-            variant="ghost"
-            size="sm"
-            leftIcon={<HiArrowLeft size={18} />}
+      {/* -------- Toolbar -------- */}
+      {!embedded && (
+        <div className={styles.toolbar}>
+          <button
+            className={styles.iconBtn}
             onClick={() => navigate(ROUTES.DASHBOARD)}
           >
-            Back
-          </Button>
-          <span className={styles.documentTitle}>{documentName}</span>
-        </div>
-
-        <div className={styles.toolbarCenter}>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => goToPage(currentPage - 1)}
-            disabled={currentPage <= 1}
-          >
-            <HiChevronLeft size={20} />
-          </Button>
-
-          <input
-            type="number"
-            className={styles.pageInput}
-            value={currentPage}
-            onChange={(e) => goToPage(parseInt(e.target.value, 10))}
-          />
-
-          <span className={styles.pageTotal}>of {numPages}</span>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => goToPage(currentPage + 1)}
-            disabled={currentPage >= numPages}
-          >
-            <HiChevronRight size={20} />
-          </Button>
-        </div>
-
-        <div className={styles.toolbarRight}>
-          <button className={styles.zoomButton} onClick={zoomOut}>
-            <HiZoomOut size={20} />
+            <HiArrowLeft size={18} />
           </button>
-          <span className={styles.zoomLevel}>
-            {Math.round(scale * 100)}%
-          </span>
-          <button className={styles.zoomButton} onClick={zoomIn}>
-            <HiZoomIn size={20} />
-          </button>
-        </div>
-      </div>
 
-      {/* Viewer */}
+          <span className={styles.title}>{docName}</span>
+
+          <div className={styles.controls}>
+            <button
+              className={styles.iconBtn}
+              disabled={page <= 1}
+              onClick={() => setPage(p => p - 1)}
+            >
+              <HiChevronLeft size={20} />
+            </button>
+
+            <span>
+              {page} / {numPages}
+            </span>
+
+            <button
+              className={styles.iconBtn}
+              disabled={page >= numPages}
+              onClick={() => setPage(p => p + 1)}
+            >
+              <HiChevronRight size={20} />
+            </button>
+
+            <button
+              className={styles.iconBtn}
+              onClick={() => setScale(s => Math.max(0.5, s - 0.25))}
+            >
+              <HiZoomOut size={18} />
+            </button>
+
+            <span>{Math.round(scale * 100)}%</span>
+
+            <button
+              className={styles.iconBtn}
+              onClick={() => setScale(s => Math.min(3, s + 0.25))}
+            >
+              <HiZoomIn size={18} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* -------- Viewer -------- */}
       <div className={styles.viewer}>
-        {isLoading && (
-          <div className={styles.loadingContainer}>
-            <Loader size="lg" text="Loading PDF..." />
-          </div>
-        )}
-
-        {error && (
-          <div className={styles.errorContainer}>
-            <HiExclamation size={48} className={styles.errorIcon} />
-            <p className={styles.errorText}>{error}</p>
-          </div>
-        )}
-
-        {pdfBlob && !error && (
+        {pdfBlob && (
           <Document
-            file={pdfBlob}   // 🔑 THIS FIXES IT
-            onLoadSuccess={onDocumentLoadSuccess}
-            loading={<Loader size="lg" text="Loading PDF..." />}
+            file={pdfBlob}
+            onLoadSuccess={({ numPages }) => setNumPages(numPages)}
           >
-            <div className={styles.pageContainer}>
-              <Page pageNumber={currentPage} scale={scale} />
+            <div ref={pageContainerRef}>
+              <Page
+                pageNumber={page}
+                scale={scale}
+                renderAnnotationLayer={false}
+              />
             </div>
           </Document>
         )}
@@ -178,5 +222,3 @@ export function ViewerPage({
     </div>
   )
 }
-
-export default ViewerPage

@@ -1,61 +1,65 @@
-import { apiClient } from "@/api";
-import type { ApiResponse, Document } from "@/types";
-
-/**
- * Authorization headers helper
- */
-function authHeaders() {
-  const token = localStorage.getItem("access_token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
+import api from "./client"
 
 export const documentsApi = {
-  // List PDFs
-  getDocuments: () =>
-    apiClient.get<ApiResponse<{ documents: Document[]; total: number }>>(
-      "/documents"
-    ),
-
-  // Get single PDF metadata
-  getDocument: (id: string) =>
-    apiClient.get<ApiResponse<Document>>(`/documents/${id}`),
-
-  // Fetch raw PDF blob (viewer)
-  getDocumentFile: (id: string) =>
-    apiClient
-      .get<Blob>(`/documents/${id}/file`, {
-        responseType: "blob",
-        headers: authHeaders(),
-      })
-      .then(res => res.data),
-
-  // Upload PDFs
-  uploadDocuments: (files: File[], onProgress?: (p: number) => void) => {
-    const formData = new FormData();
-    files.forEach(file => formData.append("files", file));
-
-    return apiClient.post<ApiResponse>(
-      "/documents/upload",
-      formData,
-      {
-        headers: {
-          "Content-Type": "multipart/form-data",
-          ...authHeaders(),
-        },
-        onUploadProgress: evt => {
-          if (onProgress && evt.total) {
-            onProgress(Math.round((evt.loaded * 100) / evt.total));
-          }
-        },
-      }
-    );
+  async getDocuments() {
+    const res = await api.get("/documents")
+    return res.data
   },
 
-  // Delete single PDF
-  deleteDocument: (id: string) =>
-    apiClient.delete<ApiResponse>(`/documents/${id}`),
+  async getDocument(documentId: string) {
+    const res = await api.get(`/documents/${documentId}`)
+    return res.data
+  },
 
-  // Delete ALL PDFs (user scoped)
-  deleteAllDocuments: () =>
-    apiClient.delete<ApiResponse>("/documents"),
-};
+  async getDocumentFile(documentId: string): Promise<Blob> {
+    // Some environments (proxying/dev servers) may return an ArrayBuffer
+    // instead of a Blob. Request `arraybuffer` and convert to Blob to be
+    // robust across setups.
+    const res = await api.get(`/documents/${documentId}/file`, {
+      responseType: "arraybuffer",
+    })
+
+    const buffer = res.data
+    if (!buffer) throw new Error("Empty PDF response")
+
+    try {
+      const blob = new Blob([buffer], { type: "application/pdf" })
+      return blob
+    } catch (e) {
+      // Fallback: try requesting as a blob directly (some servers/proxies)
+      const res = await api.get(`/documents/${documentId}/file`, {
+        responseType: "blob",
+      })
+      if (!(res.data instanceof Blob)) throw new Error("PDF response is not a Blob")
+      return res.data
+    }
+  },
+
+  async deleteAllDocuments() {
+    const res = await api.delete(`/documents`)
+    return res.data
+  },
+
+  async uploadDocuments(
+    files: File[],
+    onProgress?: (percent: number) => void
+  ) {
+    const formData = new FormData()
+    files.forEach((file) => formData.append("files", file))
+
+    const res = await api.post("/documents/upload", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      onUploadProgress: (e) => {
+        if (!onProgress || !e.total) return
+        onProgress(Math.round((e.loaded * 100) / e.total))
+      },
+    })
+
+    return res.data
+  },
+
+  async deleteDocument(documentId: string) {
+    const res = await api.delete(`/documents/${documentId}`)
+    return res.data
+  },
+}

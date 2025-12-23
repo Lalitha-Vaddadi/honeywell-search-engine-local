@@ -3,6 +3,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { router } from './routes';
 import { loadTheme } from "@/utils/theme";
+import "@/styles/pdf-text-layer.css"
 
 loadTheme();
 

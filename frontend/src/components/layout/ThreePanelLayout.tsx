@@ -55,11 +55,11 @@ export function ThreePanelLayout({
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          minHeight: 0,        // 🔑 critical
-          minWidth: 0,         // 🔑 critical
+          minHeight: 0,        
+          minWidth: 0,         
         }}
       >
-        {/* IMPORTANT: NO PADDING HERE */}
+        {/* NO PADDING HERE */}
         <div
           style={{
             flex: 1,

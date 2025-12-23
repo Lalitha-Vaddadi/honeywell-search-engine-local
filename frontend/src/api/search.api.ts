@@ -1,22 +1,7 @@
-import { apiClient } from "@/api"
+import api from "./client"
+import type { SearchResult } from "@/types"
 
-export interface SearchScores {
-  fusion: number
-  semantic: number
-  lexical: number
-  triple: number
-}
-
-export interface SearchResult {
-  documentId: string
-  documentName: string
-  pageNumber: number
-  snippet: string
-  confidenceScore: number
-  scores: SearchScores
-}
-
-export interface SearchResponse {
+interface SearchResponse {
   results: SearchResult[]
   totalResults: number
   searchTime: number
@@ -24,14 +9,37 @@ export interface SearchResponse {
 
 export async function searchDocuments(
   query: string,
-  limit: number = 5
+  limit = 10
 ): Promise<SearchResponse> {
-  const res = await apiClient.post("/search", {
+  const response = await api.post("/search", {
     query,
     limit,
   })
 
-  // Backend returns ApiResponse { success, data, message }
-  // Correct unwrap:
-  return res.data.data
+  const data = response.data?.data
+
+  if (!data) {
+    return {
+      results: [],
+      totalResults: 0,
+      searchTime: 0,
+    }
+  }
+
+  const results: SearchResult[] = data.results.map((r: any) => ({
+    documentId: r.documentId,
+    documentName: r.documentName,
+    pageNumber: r.pageNumber,
+    snippet: r.snippet,
+    highlightText: r.highlightText || "",
+    rawChunkText: r.rawChunkText || "",
+    confidenceScore: r.confidenceScore,
+    scores: r.scores,
+  }))
+
+  return {
+    results,
+    totalResults: data.totalResults,
+    searchTime: data.searchTime,
+  }
 }

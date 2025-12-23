@@ -7,6 +7,7 @@ import tempfile
 import os
 import re
 import logging
+import string
 from typing import List, Tuple
 
 from sqlalchemy import create_engine, text
@@ -27,7 +28,7 @@ try:
 except Exception:
     _OCR_AVAILABLE = False
 
-# Advanced chunking 
+# Advanced chunking
 from .chunking import chunk_document_page
 
 # ------------------------------------------------------
@@ -65,6 +66,18 @@ def download_from_minio(object_key: str, file_path: str):
     finally:
         resp.close()
         resp.release_conn()
+
+# ------------------------------------------------------
+# NORMALIZATION (CRITICAL FOR HIGHLIGHTING)
+# ------------------------------------------------------
+_NORMALIZE_PUNCT = str.maketrans("", "", string.punctuation)
+_WHITESPACE_RE = re.compile(r"\s+")
+
+def normalize_text(text: str) -> str:
+    text = text.lower()
+    text = text.translate(_NORMALIZE_PUNCT)
+    text = _WHITESPACE_RE.sub(" ", text)
+    return text.strip()
 
 # ------------------------------------------------------
 # OCR
@@ -226,13 +239,17 @@ def process_pdf(pdf_id: str, object_key: str):
             parents, children = chunk_document_page(cleaned, page_num)
             parent_db_ids = {}
 
+            # -------------------------------
+            # INSERT PARENT CHUNKS
+            # -------------------------------
             for p in parents:
                 res = db.execute(
                     text("""
                         INSERT INTO pdf_chunks
                         (pdf_metadata_id, page_num, chunk_index, chunk_text,
-                         length_chars, token_count, chunk_type, parent_chunk_id)
-                        VALUES (:pid, :pg, :idx, :txt, :len, :tokens, 'PARENT', NULL)
+                         normalized_text, length_chars, token_count,
+                         chunk_type, parent_chunk_id)
+                        VALUES (:pid, :pg, :idx, :txt, :norm, :len, :tokens, 'PARENT', NULL)
                         RETURNING id
                     """),
                     {
@@ -240,20 +257,25 @@ def process_pdf(pdf_id: str, object_key: str):
                         "pg": page_num,
                         "idx": p.index,
                         "txt": p.text,
+                        "norm": normalize_text(p.text),
                         "len": p.char_count,
                         "tokens": p.token_count,
                     },
                 )
                 parent_db_ids[p.index] = res.fetchone()[0]
 
+            # -------------------------------
+            # INSERT CHILD CHUNKS
+            # -------------------------------
             for c in children:
                 parent_id = parent_db_ids.get(c.parent_index)
                 res = db.execute(
                     text("""
                         INSERT INTO pdf_chunks
                         (pdf_metadata_id, page_num, chunk_index, chunk_text,
-                         length_chars, token_count, chunk_type, parent_chunk_id)
-                        VALUES (:pid, :pg, :idx, :txt, :len, :tokens, 'CHILD', :parent)
+                         normalized_text, length_chars, token_count,
+                         chunk_type, parent_chunk_id)
+                        VALUES (:pid, :pg, :idx, :txt, :norm, :len, :tokens, 'CHILD', :parent)
                         RETURNING id
                     """),
                     {
@@ -261,6 +283,7 @@ def process_pdf(pdf_id: str, object_key: str):
                         "pg": page_num,
                         "idx": c.index,
                         "txt": c.text,
+                        "norm": normalize_text(c.text),
                         "len": c.char_count,
                         "tokens": c.token_count,
                         "parent": parent_id,

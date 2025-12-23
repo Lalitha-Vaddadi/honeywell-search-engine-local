@@ -7,6 +7,8 @@ import type {
   RegisterCredentials 
 } from '@/types';
 
+// loginpage, registerpage, authcontext
+
 export const authApi = {
   login: async (credentials: LoginCredentials): Promise<ApiResponse<AuthResponse>> => {
     const response = await apiClient.post<ApiResponse<AuthResponse>>('/auth/login', credentials);

@@ -1,5 +1,12 @@
 :root {
 
+  /* ---------- PDF Viewer ---------- */
+--pdf-viewer-bg: var(--panel-bg);
+--pdf-controls-text: var(--panel-text-primary);
+--pdf-controls-muted: var(--panel-text-muted);
+--pdf-controls-border: var(--panel-border);
+--pdf-button-hover: var(--color-bg-tertiary);
+
    /* ---------- Spacing Scale ---------- */
   --spacing-xs: 4px;
   --spacing-sm: 8px;

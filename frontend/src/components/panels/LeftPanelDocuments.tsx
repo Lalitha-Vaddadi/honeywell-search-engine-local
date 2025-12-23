@@ -20,7 +20,10 @@ export function LeftPanelDocuments({
   const fetchDocuments = useCallback(async () => {
     try {
       const res = await documentsApi.getDocuments();
-      setDocuments(res.data.data.documents);
+      setDocuments(res.data?.documents ?? []);
+    } catch (e) {
+      console.error("Failed to load documents", e);
+      setDocuments([]);
     } finally {
       setIsLoading(false);
     }
