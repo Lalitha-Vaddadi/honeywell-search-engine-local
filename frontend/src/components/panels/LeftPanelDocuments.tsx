@@ -33,6 +33,36 @@ export function LeftPanelDocuments({
     fetchDocuments();
   }, [fetchDocuments]);
 
+useEffect(() => {
+  const hasProcessingDocs = documents.some(
+    d => d.status === "processing" || d.status === "uploading"
+  );
+
+  if (!hasProcessingDocs) return;
+
+  const interval = setInterval(() => {
+    fetchDocuments();
+  }, 3000); // poll every 3 seconds
+
+  return () => clearInterval(interval);
+}, [documents, fetchDocuments]);
+
+
+useEffect(() => {
+  const hasPendingDocs = documents.some(
+    d => d.status === "PENDING" || d.status === "PROCESSING"
+  );
+
+  if (!hasPendingDocs) return;
+
+  const interval = setInterval(() => {
+    fetchDocuments();
+  }, 3000); // poll every 3 seconds
+
+  return () => clearInterval(interval);
+}, [documents, fetchDocuments]);
+
+
   const onDrop = useCallback(
     async (files: File[]) => {
       if (!files.length) return;
@@ -176,10 +206,10 @@ export function LeftPanelDocuments({
             style={{
               background: "var(--accent-gradient)",
               borderRadius: 14,
-              padding: 14,
-              marginBottom: 10,
+              padding: 10,
+              marginBottom: 8,
               display: "flex",
-              gap: 12,
+              gap: 10,
               boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
             }}
           >
@@ -195,9 +225,9 @@ export function LeftPanelDocuments({
               <div
                 style={{
                   fontWeight: 600,
-                  fontSize: 14,
+                  fontSize: 13,
                   lineHeight: 1.4,
-                  marginBottom: 6,
+                  marginBottom: 4,
 
                   /* OVERFLOW FIX — SAME AS ORIGINAL LOGIC */
                   whiteSpace: "normal",
@@ -214,8 +244,30 @@ export function LeftPanelDocuments({
                 }}
               >
                 {formatFileSize(doc.file_size)} •{" "}
-                {formatRelativeTime(doc.created_at)}
+                {new Date(doc.created_at + "Z").toLocaleString("en-IN", {
+                  dateStyle: "medium",
+                  timeStyle: "medium",
+                })}
+
               </div>
+              {doc.status === "PENDING" && (
+                <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 4 }}>
+                  Uploading…
+                </div>
+              )}
+
+              {doc.status === "PROCESSING" && (
+                <div style={{ fontSize: 11, color: "#3b82f6", marginTop: 4 }}>
+                  Extracting text…
+                </div>
+              )}
+
+              {doc.status === "COMPLETED" && (
+                <div style={{ fontSize: 11, color: "#22c55e", marginTop: 4 }}>
+                  Ready
+                </div>
+              )}
+
             </div>
 
             {/* Delete */}

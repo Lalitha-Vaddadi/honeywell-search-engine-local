@@ -1,24 +1,24 @@
-import { useEffect, useRef } from 'react';
-import styles from './TextHighlighter.module.css';
+import { useEffect, useRef } from "react"
+import styles from "./TextHighlighter.module.css"
 
 interface Highlight {
-  text: string;
-  startOffset: number;
-  endOffset: number;
+  text: string
+  startOffset: number
+  endOffset: number
   boundingBox?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
+    x: number
+    y: number
+    width: number
+    height: number
+  }
 }
 
 interface TextHighlighterProps {
-  highlights: Highlight[];
-  containerRef: React.RefObject<HTMLDivElement>;
-  scale?: number;
-  currentHighlight?: number;
-  onHighlightClick?: (index: number) => void;
+  highlights: Highlight[]
+  containerRef: React.RefObject<HTMLDivElement>
+  scale?: number
+  currentHighlight?: number
+  onHighlightClick?: (index: number) => void
 }
 
 export function TextHighlighter({
@@ -28,34 +28,35 @@ export function TextHighlighter({
   currentHighlight,
   onHighlightClick,
 }: TextHighlighterProps) {
-  const overlayRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!containerRef.current || !overlayRef.current) return;
+    if (!containerRef.current || !overlayRef.current) return
 
-    // Position overlay to match container
-    const container = containerRef.current;
-    const overlay = overlayRef.current;
+    const container = containerRef.current
+    const overlay = overlayRef.current
 
-    const rect = container.getBoundingClientRect();
-    overlay.style.width = `${rect.width}px`;
-    overlay.style.height = `${rect.height}px`;
-  }, [containerRef, scale]);
+    const rect = container.getBoundingClientRect()
+    overlay.style.width = `${rect.width}px`
+    overlay.style.height = `${rect.height}px`
+  }, [containerRef, scale])
 
-  if (!highlights.length) return null;
+  if (!highlights.length) return null
 
   return (
     <div ref={overlayRef} className={styles.overlay}>
       {highlights.map((highlight, index) => {
-        if (!highlight.boundingBox) return null;
+        if (!highlight.boundingBox) return null
 
-        const { x, y, width, height } = highlight.boundingBox;
-        const isCurrent = currentHighlight === index;
+        const { x, y, width, height } = highlight.boundingBox
+        const isCurrent = currentHighlight === index
 
         return (
           <div
             key={`${highlight.startOffset}-${index}`}
-            className={`${styles.highlight} ${isCurrent ? styles.current : ''}`}
+            className={`${styles.highlight} ${
+              isCurrent ? styles.current : ""
+            }`}
             style={{
               left: x * scale,
               top: y * scale,
@@ -67,10 +68,10 @@ export function TextHighlighter({
             tabIndex={0}
             title={highlight.text}
           />
-        );
+        )
       })}
     </div>
-  );
+  )
 }
 
-export default TextHighlighter;
+export default TextHighlighter

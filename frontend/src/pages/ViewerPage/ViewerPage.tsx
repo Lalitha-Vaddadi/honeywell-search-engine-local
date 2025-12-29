@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useParams, useNavigate, useLocation } from "react-router-dom"
-import { Document, Page, pdfjs } from "react-pdf"
+import { Document, Page } from "react-pdf"
 import {
   HiArrowLeft,
   HiChevronLeft,
@@ -15,23 +15,15 @@ import styles from "./ViewerPage.module.css"
 import "react-pdf/dist/Page/TextLayer.css"
 import "react-pdf/dist/Page/AnnotationLayer.css"
 
-/* --------------------------------------------------
-   PDF worker
--------------------------------------------------- */
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.js",
-  import.meta.url
-).toString()
-
-/* --------------------------------------------------
-   Normalization (must match backend)
--------------------------------------------------- */
-const normalize = (text: string) =>
-  text
+/* ---------- SAFE NORMALIZE ---------- */
+const normalize = (text: unknown) => {
+  if (typeof text !== "string") return ""
+  return text
     .toLowerCase()
     .replace(/[^\w\s]/g, "")
     .replace(/\s+/g, " ")
     .trim()
+}
 
 interface ViewerPageProps {
   documentIdOverride?: string
@@ -53,9 +45,11 @@ export default function ViewerPage({
   const documentId = documentIdOverride || params.documentId
 
   const highlightRaw =
-    highlightTextOverride ??
-    (location.state as any)?.highlightText ??
-    ""
+    typeof highlightTextOverride === "string"
+      ? highlightTextOverride
+      : typeof (location.state as any)?.highlightText === "string"
+      ? (location.state as any).highlightText
+      : ""
 
   const highlightText = useMemo(
     () => normalize(highlightRaw),
@@ -83,9 +77,7 @@ export default function ViewerPage({
         const blob = await documentsApi.getDocumentFile(documentId)
         setPdfBlob(blob)
 
-        if (pageOverride) {
-          setPage(pageOverride)
-        }
+        if (pageOverride) setPage(pageOverride)
       } catch {
         setError("Failed to load PDF")
       }
@@ -94,20 +86,24 @@ export default function ViewerPage({
     load()
   }, [documentId, pageOverride])
 
-  /* -------- Highlight text (text layer) -------- */
+  /* -------- PARTIAL BUT WORKING HIGHLIGHT -------- */
   useEffect(() => {
     if (!highlightText || !pageContainerRef.current) return
 
     const timeout = setTimeout(() => {
       const container = pageContainerRef.current!
-
       const spans = Array.from(
         container.querySelectorAll<HTMLSpanElement>(
           ".react-pdf__Page__textContent span"
         )
       )
 
-      spans.forEach(s => (s.innerHTML = s.textContent || ""))
+      if (spans.length === 0) return
+
+      // reset
+      spans.forEach(s => {
+        s.innerHTML = s.textContent || ""
+      })
 
       const fullText = spans
         .map(s => normalize(s.textContent || ""))
@@ -139,7 +135,7 @@ export default function ViewerPage({
       }
 
       firstHit?.scrollIntoView({ behavior: "smooth", block: "center" })
-    }, 300)
+    }, 400)
 
     return () => clearTimeout(timeout)
   }, [highlightText, page, scale])
@@ -150,7 +146,6 @@ export default function ViewerPage({
 
   return (
     <div className={styles.container}>
-      {/* -------- Toolbar -------- */}
       {!embedded && (
         <div className={styles.toolbar}>
           <button
@@ -202,7 +197,6 @@ export default function ViewerPage({
         </div>
       )}
 
-      {/* -------- Viewer -------- */}
       <div className={styles.viewer}>
         {pdfBlob && (
           <Document

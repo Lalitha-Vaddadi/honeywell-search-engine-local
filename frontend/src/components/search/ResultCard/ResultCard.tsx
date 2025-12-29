@@ -9,7 +9,11 @@ interface ResultCardProps {
 }
 
 export function ResultCard({ result, onClick, highlightQuery }: ResultCardProps) {
-  const formatPct = (value: number) => `${Math.round(value * 100)}%`;
+  const formatPct = (value?: number) => {
+    if (typeof value !== "number" || !isFinite(value)) return "0%"
+    return `${Math.round(Math.max(0, Math.min(value, 1)) * 100)}%`
+  }
+
 
   const getConfidenceClass = (score: number) => {
     if (score >= 80) return styles.high;

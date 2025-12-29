@@ -7,7 +7,6 @@ from app.services.embeddings.embedder import generate_embeddings
 from app.services.qdrant.qdrant_client import ensure_collection, upsert_points
 
 import logging
-import uuid
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("embedder")
@@ -30,12 +29,10 @@ def embed_pdf(pdf_id: str):
     try:
         ensure_collection()
 
-        # Only embed CHILD chunks - they are optimized for vector search
-        # Parent chunks are kept for context/reranking but not embedded
         rows = db.execute(
             text("""
                 SELECT c.id, c.chunk_text, c.page_num, c.chunk_index, c.parent_chunk_id,
-                       COALESCE(p.chunk_text, c.chunk_text) as parent_text
+                       COALESCE(p.chunk_text, c.chunk_text) AS parent_text
                 FROM pdf_chunks c
                 LEFT JOIN pdf_chunks p ON c.parent_chunk_id = p.id
                 WHERE c.pdf_metadata_id = :pid
@@ -46,8 +43,6 @@ def embed_pdf(pdf_id: str):
         ).fetchall()
 
         if not rows:
-            logger.info("No child chunks to embed for %s", pdf_id)
-            # Mark as completed if everything is already embedded
             db.execute(
                 text("UPDATE pdf_metadata SET status='COMPLETED' WHERE id=:id"),
                 {"id": pdf_id},
@@ -55,21 +50,27 @@ def embed_pdf(pdf_id: str):
             db.commit()
             return
 
-        chunk_ids = []
         texts = []
         payloads = []
+        ids = []
 
         for r in rows:
-            chunk_ids.append(r.id)          # keep UUID type
-            texts.append(r.chunk_text)
+            composite_text = (
+                f"{r.parent_text.strip() if r.parent_text else ''}\n"
+                f"{r.chunk_text.strip()}"
+            )
+
+            ids.append(str(r.id))
+            texts.append(composite_text)
+
             payloads.append({
                 "chunk_id": str(r.id),
                 "pdf_id": pdf_id,
                 "page": r.page_num,
                 "chunk_index": r.chunk_index,
                 "text": r.chunk_text,
-                # Include parent text for expanded context in search results
                 "parent_text": r.parent_text,
+                "composite_text": composite_text,
                 "parent_chunk_id": str(r.parent_chunk_id) if r.parent_chunk_id else None,
             })
 
@@ -77,45 +78,43 @@ def embed_pdf(pdf_id: str):
 
         points = [
             {
-                "id": str(chunk_ids[i]),    # Qdrant needs string
+                "id": ids[i],
                 "vector": embeddings[i],
                 "payload": payloads[i],
             }
-            for i in range(len(chunk_ids))
+            for i in range(len(ids))
         ]
 
-        # Insert into Qdrant
         upsert_points(points)
 
-        # Mark chunks as embedded
-        for cid in chunk_ids:
-            db.execute(
-                text("UPDATE pdf_chunks SET embedded = TRUE WHERE id = :id"),
-                {"id": cid},
-            )
+        db.execute(
+            text("""
+                UPDATE pdf_chunks
+                SET embedded = TRUE
+                WHERE pdf_metadata_id = :pid
+            """),
+            {"pid": pdf_id},
+        )
 
-        # Mark PDF as embedded/completed
         db.execute(
             text("UPDATE pdf_metadata SET status='COMPLETED' WHERE id=:id"),
             {"id": pdf_id},
         )
 
         db.commit()
-
-        logger.info(
-            "Embedded %d chunks for PDF %s",
-            len(chunk_ids),
-            pdf_id
-        )
+        logger.info("Embedded %d chunks for PDF %s", len(ids), pdf_id)
 
     except Exception:
         db.rollback()
         db.execute(
-            text("UPDATE pdf_metadata SET status='EMBED_FAILED', error_message='embedding failed' WHERE id=:id"),
+            text("""
+                UPDATE pdf_metadata
+                SET status='EMBED_FAILED', error_message='embedding failed'
+                WHERE id=:id
+            """),
             {"id": pdf_id},
         )
         db.commit()
-        logger.exception("Embedding failed for %s", pdf_id)
         raise
 
     finally:

@@ -10,57 +10,56 @@ from app.models.user import User
 from app.schemas import ApiResponse
 from app.dependencies import get_current_user
 from worker.tasks import process_pdf
+from app.services.qdrant.qdrant_client import delete_pdf_vectors
 import uuid
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
-# Initialize MinIO client
+# ------------------------------------------------------------------------------
+# MinIO client
+# ------------------------------------------------------------------------------
 minio_client = Minio(
     settings.minio_endpoint,
     access_key=settings.minio_access_key,
     secret_key=settings.minio_secret_key,
-    secure=False
+    secure=False,
 )
 
 
 def ensure_bucket_exists():
-    """Ensure the MinIO bucket exists. Create if needed."""
     try:
         if not minio_client.bucket_exists(settings.minio_bucket):
             minio_client.make_bucket(settings.minio_bucket)
     except S3Error as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to initialize MinIO bucket: {str(e)}"
+            detail=f"Failed to initialize MinIO bucket: {str(e)}",
         )
 
 
 async def cleanup_orphaned_file(object_key: str):
-    """Remove uploaded file if later DB operations fail."""
     try:
         minio_client.remove_object(settings.minio_bucket, object_key)
     except:
-        pass  # best effort
+        pass
 
 
-# --------------------------------------------------------------------------------
-#  UPLOAD PDFs
-# --------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# UPLOAD PDFs
+# ------------------------------------------------------------------------------
 @router.post("/upload")
 async def upload_documents(
     files: list[UploadFile] = File(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     ensure_bucket_exists()
 
     results = []
     errors = []
-    uploaded_keys = []  # rollback safety
+    uploaded_keys = []
 
     for file in files:
-
-        # Validate PDF
         if not file.filename.lower().endswith(".pdf"):
             errors.append({"filename": file.filename, "error": "Only PDF files allowed"})
             continue
@@ -68,20 +67,17 @@ async def upload_documents(
         object_key = f"{uuid.uuid4()}_{file.filename}"
 
         try:
-            # Determine file size
             file.file.seek(0, 2)
             file_size = file.file.tell()
             file.file.seek(0)
 
-            # Validate size
             if file_size > settings.max_upload_size:
                 errors.append({
                     "filename": file.filename,
-                    "error": f"File too large. Max size is {settings.max_upload_size // (1024 * 1024)}MB"
+                    "error": "File too large",
                 })
                 continue
 
-            # Upload to MinIO
             minio_client.put_object(
                 settings.minio_bucket,
                 object_key,
@@ -91,7 +87,6 @@ async def upload_documents(
             )
             uploaded_keys.append(object_key)
 
-            # Create DB record
             pdf_record = PDFMetadata(
                 filename=file.filename,
                 object_key=object_key,
@@ -100,15 +95,13 @@ async def upload_documents(
                 uploaded_by=current_user.id,
             )
             db.add(pdf_record)
-            await db.flush()  # Get ID
+            await db.flush()
 
-            # Trigger background processing
             process_pdf.delay(str(pdf_record.id), object_key)
 
             results.append({
                 "id": str(pdf_record.id),
                 "filename": file.filename,
-                "object_key": object_key,
                 "file_size": file_size,
                 "status": pdf_record.status.value,
             })
@@ -118,45 +111,35 @@ async def upload_documents(
                 await cleanup_orphaned_file(object_key)
             errors.append({"filename": file.filename, "error": str(e)})
 
-    # Commit DB changes
     try:
         await db.commit()
     except Exception as e:
         for key in uploaded_keys:
             await cleanup_orphaned_file(key)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Database error during commit: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
     return ApiResponse(
         success=True,
         data={
             "uploaded": results,
             "errors": errors,
-            "total_uploaded": len(results),
-            "total_errors": len(errors),
         },
-        message=f"Uploaded {len(results)} file(s)"
+        message=f"Uploaded {len(results)} file(s)",
     )
 
 
-# --------------------------------------------------------------------------------
-#  LIST PDFs
-# --------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# LIST DOCUMENTS
+# ------------------------------------------------------------------------------
 @router.get("")
 async def list_documents(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    skip: int = 0,
-    limit: int = 50,
 ):
     result = await db.execute(
         select(PDFMetadata)
         .where(PDFMetadata.uploaded_by == current_user.id)
         .order_by(PDFMetadata.created_at.desc())
-        .offset(skip)
-        .limit(limit)
     )
 
     docs = result.scalars().all()
@@ -176,20 +159,19 @@ async def list_documents(
                     "created_at": doc.created_at.isoformat(),
                 }
                 for doc in docs
-            ],
-            "total": len(docs)
-        }
+            ]
+        },
     )
 
 
-# --------------------------------------------------------------------------------
-#  GET PDF METADATA
-# --------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# GET SINGLE DOCUMENT METADATA
+# ------------------------------------------------------------------------------
 @router.get("/{document_id}")
 async def get_document(
     document_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     try:
         doc_uuid = uuid.UUID(document_id)
@@ -197,15 +179,13 @@ async def get_document(
         raise HTTPException(status_code=400, detail="Invalid document ID")
 
     result = await db.execute(
-        select(PDFMetadata)
-        .where(
+        select(PDFMetadata).where(
             PDFMetadata.id == doc_uuid,
             PDFMetadata.uploaded_by == current_user.id,
         )
     )
 
     doc = result.scalar_one_or_none()
-
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
@@ -225,70 +205,56 @@ async def get_document(
     )
 
 
-# --------------------------------------------------------------------------------
-#  DOWNLOAD RAW PDF FILE
-# --------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# DOWNLOAD PDF FILE
+# ------------------------------------------------------------------------------
 @router.get("/{document_id}/file")
 async def get_document_file(
     document_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Return the raw PDF file bytes so the React viewer can display it.
-    """
-
-    # Validate UUID
     try:
         doc_uuid = uuid.UUID(document_id)
     except:
         raise HTTPException(status_code=400, detail="Invalid document ID")
 
-    # Fetch DB metadata
     result = await db.execute(
-        select(PDFMetadata)
-        .where(
+        select(PDFMetadata).where(
             PDFMetadata.id == doc_uuid,
-            PDFMetadata.uploaded_by == current_user.id
+            PDFMetadata.uploaded_by == current_user.id,
         )
     )
-    metadata = result.scalar_one_or_none()
 
+    metadata = result.scalar_one_or_none()
     if not metadata:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    object_key = metadata.object_key
-    if not object_key:
-        raise HTTPException(status_code=500, detail="Missing object key")
-
-    # Fetch PDF from MinIO
     try:
-        response = minio_client.get_object(settings.minio_bucket, object_key)
+        response = minio_client.get_object(settings.minio_bucket, metadata.object_key)
         pdf_bytes = response.read()
         response.close()
         response.release_conn()
-    except Exception as e:
-        print("MinIO fetch error:", e)
-        raise HTTPException(status_code=500, detail="Failed to fetch PDF file from storage")
+    except:
+        raise HTTPException(status_code=500, detail="Failed to fetch PDF")
 
-    # Return actual PDF
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'inline; filename=\"{metadata.filename}\"'
-        }
+            "Content-Disposition": f'inline; filename="{metadata.filename}"'
+        },
     )
 
 
-# --------------------------------------------------------------------------------
-#  DELETE PDF
-# --------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# DELETE SINGLE DOCUMENT (MinIO + Qdrant + DB)
+# ------------------------------------------------------------------------------
 @router.delete("/{document_id}")
 async def delete_document(
     document_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     try:
         doc_uuid = uuid.UUID(document_id)
@@ -296,63 +262,61 @@ async def delete_document(
         raise HTTPException(status_code=400, detail="Invalid document ID")
 
     result = await db.execute(
-        select(PDFMetadata)
-        .where(
+        select(PDFMetadata).where(
             PDFMetadata.id == doc_uuid,
-            PDFMetadata.uploaded_by == current_user.id
+            PDFMetadata.uploaded_by == current_user.id,
         )
     )
 
     doc = result.scalar_one_or_none()
-
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Delete from MinIO
+    try:
+        delete_pdf_vectors(str(doc.id))
+    except Exception as e:
+        print("Qdrant cleanup failed:", e)
+
     try:
         minio_client.remove_object(settings.minio_bucket, doc.object_key)
     except:
         pass
 
-    # Delete from DB
     await db.delete(doc)
     await db.commit()
 
     return ApiResponse(success=True, message="Document deleted")
-# --------------------------------------------------------------------------------
-#  DELETE ALL PDFs (USER-SCOPED)
-# --------------------------------------------------------------------------------
+
+
+# ------------------------------------------------------------------------------
+# DELETE ALL DOCUMENTS (USER)
+# ------------------------------------------------------------------------------
 @router.delete("")
 async def delete_all_documents(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    # Fetch all user documents
     result = await db.execute(
-        select(PDFMetadata)
-        .where(PDFMetadata.uploaded_by == current_user.id)
+        select(PDFMetadata).where(PDFMetadata.uploaded_by == current_user.id)
     )
     docs = result.scalars().all()
 
-    if not docs:
-        return ApiResponse(success=True, message="No documents to delete")
-
-    object_keys = [doc.object_key for doc in docs]
-
-    # 1. Delete files from MinIO (best-effort)
-    for key in object_keys:
+    for doc in docs:
         try:
-            minio_client.remove_object(settings.minio_bucket, key)
-        except Exception:
+            delete_pdf_vectors(str(doc.id))
+        except Exception as e:
+            print("Qdrant cleanup failed:", e)
+
+        try:
+            minio_client.remove_object(settings.minio_bucket, doc.object_key)
+        except:
             pass
 
-    # 2. Delete DB rows (chunks are already FK-linked)
-    for doc in docs:
         await db.delete(doc)
 
     await db.commit()
 
     return ApiResponse(
         success=True,
-        message=f"Deleted {len(docs)} document(s)"
+        message=f"Deleted {len(docs)} document(s)",
     )

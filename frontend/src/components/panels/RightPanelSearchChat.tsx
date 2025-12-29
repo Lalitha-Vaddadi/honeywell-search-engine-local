@@ -8,7 +8,7 @@ interface Props {
   onOpenResult: (
     documentId: string,
     page: number,
-    highlightText: string
+    highlightTokens: string[]
   ) => void
 }
 
@@ -43,7 +43,14 @@ export function RightPanelSearchChat({ onOpenResult }: Props) {
         <SearchResults
           results={results}
           onSelect={(r) =>
-            onOpenResult(r.documentId, r.pageNumber, r.snippet)
+          onOpenResult(
+            r.documentId,
+            r.pageNumber,
+            query
+              .toLowerCase()
+              .split(/\s+/)
+              .filter(w => w.length > 2)
+          )
           }
         />
       </div>

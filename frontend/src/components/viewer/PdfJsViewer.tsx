@@ -110,6 +110,13 @@ export default function PdfJsViewer({
         viewport,
       }).promise
 
+      // layout stabilization
+      await new Promise(r =>
+        requestAnimationFrame(() =>
+          requestAnimationFrame(r)
+        )
+      )
+
       if (!highlightText) {
         setHighlights([])
         return
@@ -117,42 +124,47 @@ export default function PdfJsViewer({
 
       const textContent = await pageObj.getTextContent()
       const items = textContent.items as any[]
-
-      const normalizedTarget = normalize(highlightText)
       const normalizedItems = items.map(it => normalize(it.str))
 
-      let matchStart = -1
-      let matchEnd = -1
+      const tokens = normalize(highlightText)
+        .split(" ")
+        .filter(t => t.length > 2)
 
-      for (let i = 0; i < normalizedItems.length; i++) {
-        let windowText = ""
-        for (
-          let j = i;
-          j < normalizedItems.length &&
-          windowText.length < normalizedTarget.length + 20;
-          j++
-        ) {
-          windowText += normalizedItems[j] + " "
-          if (windowText.includes(normalizedTarget)) {
-            matchStart = i
-            matchEnd = j
-            break
-          }
-        }
-        if (matchStart !== -1) break
-      }
-
-      if (matchStart === -1) {
+      if (tokens.length === 0) {
         setHighlights([])
         return
       }
 
+      /* ---- find best local region (scoring only) ---- */
+      let best = { score: 0, start: -1, end: -1 }
+
+      for (let i = 0; i < normalizedItems.length; i++) {
+        let score = 0
+
+        for (let j = i; j < normalizedItems.length && j < i + 20; j++) {
+          for (const t of tokens) {
+            if (normalizedItems[j].includes(t)) score++
+          }
+          if (score > best.score) {
+            best = { score, start: i, end: j }
+          }
+        }
+      }
+
+      if (best.score === 0) {
+        setHighlights([])
+        return
+      }
+
+      /* ---- highlight ONLY matching words ---- */
       const boxes: HighlightBox[] = []
 
-      for (let i = matchStart; i <= matchEnd; i++) {
+      for (let i = best.start; i <= best.end; i++) {
+        const text = normalizedItems[i]
+        if (!tokens.some(t => text.includes(t))) continue
+
         const item = items[i]
         const [, , , , x, y] = item.transform
-
         const [vx, vy] = viewport.convertToViewportPoint(x, y)
 
         const height =

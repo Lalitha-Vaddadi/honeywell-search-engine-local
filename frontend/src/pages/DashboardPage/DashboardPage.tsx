@@ -51,7 +51,9 @@ export function DashboardPage() {
               onOpenResult={(docId, page, highlight) => {
                 setSelectedDocument(docId)
                 setPageOverride(page)
-                setHighlightText(highlight)
+                setHighlightText(
+                  Array.isArray(highlight) ? highlight.join(" ") : highlight
+                )
               }}
             />
           }

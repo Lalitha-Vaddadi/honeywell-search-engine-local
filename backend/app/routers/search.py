@@ -1,15 +1,15 @@
 import time
 import uuid
-from typing import List, Optional
+import re
+import numpy as np
+from typing import List, Dict
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import fitz  # PyMuPDF
-import tempfile
-import os
+from sentence_transformers.util import cos_sim
 
 from app.database import get_db
 from app.dependencies import get_current_user
@@ -17,6 +17,7 @@ from app.models import PDFMetadata
 from app.models.search_history import SearchHistory
 from app.models.user import User
 from app.schemas import ApiResponse
+
 from app.services.embeddings.embedder import embed_query
 from app.services.search.fusion import (
     semantic_channel,
@@ -24,120 +25,128 @@ from app.services.search.fusion import (
     triple_channel,
     fuse_results,
 )
-from app.config import settings
-from minio import Minio
 
 router = APIRouter(prefix="/search", tags=["Search"])
 
-# ------------------------------------------------------------------
-# MinIO client (read-only)
-# ------------------------------------------------------------------
-minio_client = Minio(
-    settings.minio_endpoint,
-    access_key=settings.minio_access_key,
-    secret_key=settings.minio_secret_key,
-    secure=False,
-)
+_SENT_SPLIT = re.compile(r'(?<=[.!?])\s+')
+_TOKEN_RE = re.compile(r"[a-zA-Z0-9]+")
 
-# ------------------------------------------------------------------
-# Helpers
-# ------------------------------------------------------------------
-def normalize(text: str) -> str:
-    return " ".join(
-        text.lower()
-        .translate(str.maketrans("", "", r"""!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~"""))
-        .split()
+_STOPWORDS = {
+    "the", "is", "are", "was", "were", "of", "on", "in", "for", "to",
+    "with", "using", "use", "based", "by", "and", "or", "from"
+}
+
+def content_tokens(text: str):
+    return [
+        t for t in _TOKEN_RE.findall(text.lower())
+        if t not in _STOPWORDS and len(t) > 2
+    ]
+
+
+def extract_highlight_tokens(sentence: str, query: str):
+    """
+    Returns stable content tokens to highlight.
+    """
+    sent_tokens = {
+        t for t in _TOKEN_RE.findall(sentence.lower())
+        if t not in _STOPWORDS and len(t) > 2
+    }
+
+    query_tokens = {
+        t for t in _TOKEN_RE.findall(query.lower())
+        if t not in _STOPWORDS and len(t) > 2
+    }
+
+    # Prefer intersection, fallback to sentence tokens
+    tokens = sent_tokens & query_tokens
+    if not tokens:
+        tokens = sent_tokens
+
+    # Cap to avoid visual noise
+    return list(tokens)[:8]
+
+# ----------------------------
+# Sentence utils
+# ----------------------------
+def split_sentences(text: str) -> List[str]:
+    return [s.strip() for s in _SENT_SPLIT.split(text) if len(s.strip()) > 20]
+
+
+async def best_sentence_score(text: str, query_vec: List[float]):
+    sentences = split_sentences(text)
+    if not sentences:
+        return "", 0.0
+
+    sent_vecs = await embed_query(sentences)
+    sims = cos_sim(np.array(query_vec), np.array(sent_vecs))[0]
+    idx = int(np.argmax(sims))
+    return sentences[idx], float(sims[idx])
+
+
+
+# Lexical scoring 
+def lexical_sentence_score(sentence: str, query: str) -> float:
+    s = sentence.lower()
+    q = query.lower()
+
+    # 1. Exact phrase match
+    if q in s:
+        return 1.0
+
+    s_tokens = content_tokens(s)
+    q_tokens = content_tokens(q)
+
+    if not q_tokens:
+        return 0.0
+
+    s_set = set(s_tokens)
+    q_set = set(q_tokens)
+
+    # 2. All important terms present (dominant lexical signal)
+    if q_set.issubset(s_set):
+        return 0.9
+
+    # 3. High coverage
+    coverage = len(s_set & q_set) / len(q_set)
+
+    if coverage >= 0.75:
+        return 0.7
+    if coverage >= 0.5:
+        return 0.5
+
+    return 0.0
+
+
+def adjust_semantic_for_lexical(semantic: float, lexical: float) -> float:
+    """
+    If lexical evidence is strong, semantic should not dominate.
+    This prevents 'semantic inflation' on exact matches.
+    """
+    if lexical >= 0.9:
+        return semantic * 0.6
+    if lexical >= 0.6:
+        return semantic * 0.75
+    return semantic
+
+def enforce_lexical_dominance(semantic: float, lexical: float) -> float:
+    if lexical >= 0.9 and semantic > lexical:
+        return lexical
+    return semantic
+
+# ----------------------------
+# Confidence composition
+# ----------------------------
+def final_confidence(semantic: float, lexical: float, oie: float) -> float:
+    score = (
+        0.55 * semantic +
+        0.35 * lexical +
+        0.10 * oie
     )
+    return max(0.0, min(score, 1.0))
 
 
-def extract_highlight_boxes(
-    object_key: str,
-    page_number: int,
-    query_text: str,
-) -> list[dict]:
-    """
-    Returns normalized bounding boxes for the first text match on the page.
-    Coordinates are normalized (0–1), top-left origin.
-    """
-    if not query_text:
-        return []
-
-    tmp_path = None
-    boxes = []
-
-    try:
-        # Download PDF to temp
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-        tmp_path = tmp.name
-        tmp.close()
-
-        resp = minio_client.get_object(settings.minio_bucket, object_key)
-        with open(tmp_path, "wb") as f:
-            for chunk in resp.stream(32 * 1024):
-                f.write(chunk)
-        resp.close()
-        resp.release_conn()
-
-        doc = fitz.open(tmp_path)
-        page_index = max(0, page_number - 1)
-        if page_index >= len(doc):
-            return []
-
-        page = doc[page_index]
-        page_width = page.rect.width
-        page_height = page.rect.height
-
-        target = normalize(query_text)
-
-        # Word-level search (robust)
-        words = page.get_text("words")  # (x0,y0,x1,y1,word,...)
-        normalized_words = [(w, normalize(w[4])) for w in words]
-
-        window = []
-        window_text = ""
-
-        for w, norm in normalized_words:
-            if not norm:
-                continue
-            window.append(w)
-            window_text += norm + " "
-
-            if len(window_text) > len(target) + 20:
-                window.pop(0)
-                window_text = " ".join(normalize(x[4]) for x in window) + " "
-
-            if target in window_text:
-                # Compute union bbox
-                x0 = min(w[0] for w in window)
-                y0 = min(w[1] for w in window)
-                x1 = max(w[2] for w in window)
-                y1 = max(w[3] for w in window)
-
-                boxes.append({
-                    "x": x0 / page_width,
-                    "y": y0 / page_height,
-                    "w": (x1 - x0) / page_width,
-                    "h": (y1 - y0) / page_height,
-                })
-                break
-
-        doc.close()
-        return boxes
-
-    except Exception:
-        return []
-
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.remove(tmp_path)
-
-
-# ------------------------------------------------------------------
-# API
-# ------------------------------------------------------------------
 class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1)
-    documentIds: Optional[List[str]] = None
     limit: int = Field(default=5, ge=1, le=50)
 
 
@@ -149,23 +158,24 @@ async def search_documents(
 ):
     start = time.perf_counter()
 
-    doc_query = select(PDFMetadata).where(
-        PDFMetadata.uploaded_by == current_user.id,
-        PDFMetadata.status == "COMPLETED",
-    )
-
-    result = await db.execute(doc_query)
-    docs = result.scalars().all()
+    docs = (
+        await db.execute(
+            select(PDFMetadata).where(
+                PDFMetadata.uploaded_by == current_user.id,
+                PDFMetadata.status == "COMPLETED",
+            )
+        )
+    ).scalars().all()
 
     if not docs:
-        return ApiResponse(success=True, data={"results": []}, message=None)
+        return ApiResponse(success=True, data={"results": []})
 
     allowed_ids = [str(doc.id) for doc in docs]
     id_to_doc = {str(doc.id): doc for doc in docs}
 
-    query_vector = await embed_query(request.query)
+    query_vec = await embed_query(request.query)
 
-    semantic_hits = semantic_channel(query_vector, allowed_ids)
+    semantic_hits = semantic_channel(query_vec, allowed_ids, request.query)
     lexical_hits = await lexical_channel(
         db, request.query, [uuid.UUID(pid) for pid in allowed_ids]
     )
@@ -177,44 +187,92 @@ async def search_documents(
         semantic_hits,
         lexical_hits,
         triple_hits,
-        request.limit,
+        limit=request.limit * 4,
         query=request.query,
     )
 
-    results = []
-
+    # ----------------------------
+    # PAGE-FIRST SELECTION
+    # ----------------------------
+    pages: Dict[int, list] = {}
     for h in fused:
-        pdf_id = h.get("pdf_id")
-        if not pdf_id or pdf_id not in id_to_doc:
+        pages.setdefault(h["page"], []).append(h)
+
+    page_scores = {}
+    for page, hits in pages.items():
+        score = 0.0
+        for h in hits:
+            if h.get("has_lexical"):
+                score += 2.0
+            if h.get("has_oie"):
+                score += 0.5
+            if h.get("has_semantic"):
+                score += 0.5
+        page_scores[page] = score
+
+    ranked_pages = sorted(page_scores, key=page_scores.get, reverse=True)
+
+    candidates = []
+
+    for page in ranked_pages:
+        hits = pages[page]
+
+        best = None
+        best_sem = 0.0
+
+        for h in hits:
+            text = h.get("text") or h.get("parent_text") or ""
+            sentence, sem_score = await best_sentence_score(text, query_vec)
+
+            if sem_score > best_sem:
+                best_sem = sem_score
+                best = (h, sentence, sem_score)
+
+        if not best:
             continue
 
-        page_num = h.get("page") or 1
-        raw_text = h.get("chunk_text") or h.get("snippet") or ""
+        h, sentence, sem_score = best
 
-        pdf_meta = id_to_doc[pdf_id]
+        lex_score = lexical_sentence_score(sentence, request.query)
+        oie_score = 1.0 if h.get("has_oie") else 0.0
 
-        highlight_boxes = extract_highlight_boxes(
-            object_key=pdf_meta.object_key,
-            page_number=page_num,
-            query_text=raw_text,
-        )
+        adj_sem = adjust_semantic_for_lexical(sem_score, lex_score)
+        adj_sem = enforce_lexical_dominance(adj_sem, lex_score)
 
-        results.append({
-            "documentId": pdf_id,
-            "documentName": pdf_meta.filename,
-            "pageNumber": page_num,
-            "snippet": raw_text[:300],
-            "highlightBoxes": highlight_boxes,
-            "confidenceScore": max(
-                0.0,
-                min(100.0, (h.get("fusion_score") or 0) * 100),
-            ),
+        confidence = final_confidence(adj_sem, lex_score, oie_score)
+
+        highlight_tokens = extract_highlight_tokens(sentence, request.query)
+
+        candidates.append({
+            "documentId": h["pdf_id"],
+            "documentName": id_to_doc[h["pdf_id"]].filename,
+            "pageNumber": page,
+            "snippet": sentence,
+            "highlightTokens": highlight_tokens,
+            "confidence": confidence,
             "scores": {
-                "semantic": h.get("semantic_score", 0),
-                "lexical": h.get("lexical_score", 0),
-                "triple": h.get("triple_score", 0),
+                "semantic": round(adj_sem, 3),
+                "lexical": round(lex_score, 3),
             },
         })
+
+
+    # GLOBAL SORT BY CONFIDENCE
+    candidates.sort(key=lambda x: x["confidence"], reverse=True)
+
+    results = []
+    for c in candidates[:request.limit]:
+        results.append({
+            "documentId": c["documentId"],
+            "documentName": c["documentName"],
+            "pageNumber": c["pageNumber"],
+            "snippet": c["snippet"],
+            "highlightTokens": c["highlightTokens"],
+            "confidenceScore": int(c["confidence"] * 100),
+            "scores": c["scores"],
+        })
+
+
 
     db.add(SearchHistory(user_id=current_user.id, query=request.query))
     await db.commit()
@@ -224,7 +282,6 @@ async def search_documents(
         data={
             "results": results,
             "totalResults": len(results),
-            "searchTime": time.perf_counter() - start,
+            "searchTime": round(time.perf_counter() - start, 3),
         },
-        message=None,
     )
