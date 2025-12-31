@@ -100,7 +100,7 @@ async def search_documents(
 
     query_sents = split_query_sentences(request.query)
 
-    # 🔒 CRITICAL: sentence-wise semantic fan-out, NO regression
+    # sentence-wise semantic fan-out
     if len(query_sents) >= 2:
         query_vecs = await embed_query(query_sents)
     else:
@@ -136,7 +136,7 @@ async def search_documents(
             best_sem = 0.0
             best_lex = 0.0
 
-            # 🔒 sentence-aligned semantic + lexical
+            # sentence-aligned semantic + lexical
             for i, qv in enumerate(query_vecs):
                 sent, sem = await best_sentence_score(text, qv)
                 if sem > best_sem:
@@ -149,7 +149,7 @@ async def search_documents(
                         lexical_sentence_score(sent, query_sents[i])
                     )
 
-            # 🔒 delayed guardrail, OIE can rescue
+            #  delayed guardrail, OIE can rescue
             if len(query_sents) >= 2:
                 if best_sem < 0.4 and best_lex < 0.5 and not h.get("has_oie"):
                     continue
@@ -171,7 +171,7 @@ async def search_documents(
                 },
             })
 
-    # 🔒 semantic fallback for long queries
+    # semantic fallback for long queries
     if len(query_sents) >= 2 and not candidates:
         for page, hits in pages.items():
             for h in hits:
