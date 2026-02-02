@@ -1,0 +1,27 @@
+{
+  "name": "pdf-search-desktop",
+  "version": "1.0.0",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^40.1.0",
+    "electron-builder": "^26.4.0"
+  },
+  "build": {
+    "appId": "com.pdfsearch.desktop",
+    "productName": "PDF Search Engine",
+    "asar": true,
+    "files": [
+      "main.js",
+      "../frontend/dist/**",
+      "../docker/docker-compose.yml"
+    ],
+    "win": {
+      "target": "nsis"
+    }
+  }
+}

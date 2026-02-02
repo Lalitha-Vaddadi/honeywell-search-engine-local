@@ -105,10 +105,12 @@ export default function PdfJsViewer({
       ctx.setTransform(1, 0, 0, 1, 0, 0)
       ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-      await pageObj.render({
-        canvasContext: ctx,
-        viewport,
-      }).promise
+    await pageObj.render({
+      canvas: canvas,
+      canvasContext: ctx,
+      viewport,
+    }).promise
+
 
       // layout stabilization
       await new Promise(r =>

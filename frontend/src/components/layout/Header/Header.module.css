@@ -59,7 +59,7 @@
   background: var(--avatar-bg);
   color: var(--avatar-text);
 
-  display: flex;
+  display: flex; 
   align-items: center;
   justify-content: center;
 

@@ -5,6 +5,7 @@ const THEME_KEY = "theme";
 export function setTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
   localStorage.setItem(THEME_KEY, theme);
+  window.electron?.saveTheme(theme)
 }
 
 export function loadTheme() {

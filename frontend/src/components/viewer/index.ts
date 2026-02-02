@@ -1,2 +1,1 @@
-export * from './TextHighlighter';
-export * from './PageNavigator';
+export * from "./PdfJsViewer";

@@ -3,18 +3,30 @@ import api from "./client"
 export const documentsApi = {
   async getDocuments() {
     const res = await api.get("/documents")
+
+    // Normalize backend enum casing to match frontend DocumentStatus
+    if (res.data?.data?.documents) {
+      res.data.data.documents = res.data.data.documents.map((doc: any) => ({
+        ...doc,
+        status: String(doc.status).toLowerCase(),
+      }))
+    }
+
     return res.data
   },
 
   async getDocument(documentId: string) {
     const res = await api.get(`/documents/${documentId}`)
+
+    // Normalize single document status
+    if (res.data?.data?.status) {
+      res.data.data.status = String(res.data.data.status).toLowerCase()
+    }
+
     return res.data
   },
 
   async getDocumentFile(documentId: string): Promise<Blob> {
-    // Some environments (proxying/dev servers) may return an ArrayBuffer
-    // instead of a Blob. Request `arraybuffer` and convert to Blob to be
-    // robust across setups.
     const res = await api.get(`/documents/${documentId}/file`, {
       responseType: "arraybuffer",
     })
@@ -25,12 +37,13 @@ export const documentsApi = {
     try {
       const blob = new Blob([buffer], { type: "application/pdf" })
       return blob
-    } catch (e) {
-      // Fallback: try requesting as a blob directly (some servers/proxies)
+    } catch {
       const res = await api.get(`/documents/${documentId}/file`, {
         responseType: "blob",
       })
-      if (!(res.data instanceof Blob)) throw new Error("PDF response is not a Blob")
+      if (!(res.data instanceof Blob)) {
+        throw new Error("PDF response is not a Blob")
+      }
       return res.data
     }
   },

@@ -60,6 +60,33 @@ services:
       timeout: 5s
       retries: 5
 
+  backend:
+    build: ../backend
+    container_name: search-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+  worker:
+    build: ../backend
+    command: celery -A app.worker.celery_app.celery_app worker --loglevel=info
+    depends_on:
+      - redis
+      - postgres
+      - minio
+      - qdrant
+    env_file:
+      - .env
+
+
+
 volumes:
   postgres_data:
   qdrant_data:

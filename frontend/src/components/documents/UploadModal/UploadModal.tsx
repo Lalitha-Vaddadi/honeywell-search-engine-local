@@ -10,6 +10,7 @@ interface UploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  onUploadComplete: () => void;
 }
 
 interface UploadFile {
@@ -19,29 +20,32 @@ interface UploadFile {
   error?: string;
 }
 
-export function UploadModal({ isOpen, onClose, onSuccess }: UploadModalProps) {
+export function UploadModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  onUploadComplete,
+}: UploadModalProps) {
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    const newFiles = acceptedFiles.map((file) => ({
+    const newFiles = acceptedFiles.map(file => ({
       file,
       progress: 0,
       status: 'pending' as const,
     }));
-    setFiles((prev) => [...prev, ...newFiles]);
+    setFiles(prev => [...prev, ...newFiles]);
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: {
-      'application/pdf': ['.pdf'],
-    },
+    accept: { 'application/pdf': ['.pdf'] },
     multiple: true,
   });
 
   const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
+    setFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const uploadFiles = async () => {
@@ -52,24 +56,25 @@ export function UploadModal({ isOpen, onClose, onSuccess }: UploadModalProps) {
     for (let i = 0; i < files.length; i++) {
       if (files[i].status !== 'pending') continue;
 
-      setFiles((prev) =>
+      setFiles(prev =>
         prev.map((f, idx) =>
-          idx === i ? { ...f, status: 'uploading' as const } : f
+          idx === i ? { ...f, status: 'uploading' } : f
         )
       );
 
       try {
         await documentsApi.uploadDocuments([files[i].file]);
-        setFiles((prev) =>
+        setFiles(prev =>
           prev.map((f, idx) =>
-            idx === i ? { ...f, status: 'completed' as const, progress: 100 } : f
+            idx === i ? { ...f, status: 'completed', progress: 100 } : f
           )
         );
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Upload failed';
-        setFiles((prev) =>
+        const message =
+          error instanceof Error ? error.message : 'Upload failed';
+        setFiles(prev =>
           prev.map((f, idx) =>
-            idx === i ? { ...f, status: 'error' as const, error: message } : f
+            idx === i ? { ...f, status: 'error', error: message } : f
           )
         );
       }
@@ -77,8 +82,9 @@ export function UploadModal({ isOpen, onClose, onSuccess }: UploadModalProps) {
 
     setIsUploading(false);
 
-    // Check if all uploads succeeded
-    const allCompleted = files.every((f) => f.status === 'completed');
+    onUploadComplete();
+
+    const allCompleted = files.every(f => f.status === 'completed');
     if (allCompleted) {
       onSuccess();
       handleClose();
@@ -92,8 +98,8 @@ export function UploadModal({ isOpen, onClose, onSuccess }: UploadModalProps) {
     }
   };
 
-  const completedCount = files.filter((f) => f.status === 'completed').length;
-  const hasErrors = files.some((f) => f.status === 'error');
+  const completedCount = files.filter(f => f.status === 'completed').length;
+  const hasErrors = files.some(f => f.status === 'error');
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Upload Documents">
@@ -118,7 +124,9 @@ export function UploadModal({ isOpen, onClose, onSuccess }: UploadModalProps) {
               <div key={index} className={styles.fileItem}>
                 <HiDocumentText size={24} className={styles.fileIcon} />
                 <div className={styles.fileInfo}>
-                  <span className={styles.fileName}>{uploadFile.file.name}</span>
+                  <span className={styles.fileName}>
+                    {uploadFile.file.name}
+                  </span>
                   <span className={styles.fileSize}>
                     {formatFileSize(uploadFile.file.size)}
                   </span>
@@ -158,10 +166,7 @@ export function UploadModal({ isOpen, onClose, onSuccess }: UploadModalProps) {
             <Button variant="secondary" onClick={handleClose} disabled={isUploading}>
               Cancel
             </Button>
-            <Button
-              onClick={uploadFiles}
-              disabled={files.length === 0 || isUploading}
-            >
+            <Button onClick={uploadFiles} disabled={files.length === 0 || isUploading}>
               {isUploading
                 ? `Uploading... (${completedCount}/${files.length})`
                 : `Upload ${files.length} file${files.length !== 1 ? 's' : ''}`}

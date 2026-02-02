@@ -31,22 +31,17 @@ except Exception:
 # Advanced chunking
 from .chunking import chunk_document_page
 
-# ------------------------------------------------------
+
 # LOGGING
-# ------------------------------------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tasks")
 
-# ------------------------------------------------------
 # DATABASE (SYNC — REQUIRED FOR CELERY ON WINDOWS)
-# ------------------------------------------------------
 SYNC_DB_URL = settings.database_url.replace("+asyncpg", "")
 engine = create_engine(SYNC_DB_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine)
 
-# ------------------------------------------------------
 # MINIO
-# ------------------------------------------------------
 minio_client = Minio(
     settings.minio_endpoint,
     access_key=settings.minio_access_key,
@@ -54,9 +49,7 @@ minio_client = Minio(
     secure=False,
 )
 
-# ------------------------------------------------------
 # MINIO HELPERS
-# ------------------------------------------------------
 def download_from_minio(object_key: str, file_path: str):
     resp = minio_client.get_object(settings.minio_bucket, object_key)
     try:
@@ -67,9 +60,7 @@ def download_from_minio(object_key: str, file_path: str):
         resp.close()
         resp.release_conn()
 
-# ------------------------------------------------------
 # NORMALIZATION (CRITICAL FOR HIGHLIGHTING)
-# ------------------------------------------------------
 _NORMALIZE_PUNCT = str.maketrans("", "", string.punctuation)
 _WHITESPACE_RE = re.compile(r"\s+")
 
@@ -79,9 +70,7 @@ def normalize_text(text: str) -> str:
     text = _WHITESPACE_RE.sub(" ", text)
     return text.strip()
 
-# ------------------------------------------------------
 # OCR
-# ------------------------------------------------------
 def ocr_page_image(image) -> str:
     if not _OCR_AVAILABLE:
         return ""
@@ -104,9 +93,8 @@ def extract_text_with_ocr(pdf_path: str, page_num: int) -> str:
         logger.warning("OCR extraction failed for page %s: %s", page_num, e)
     return ""
 
-# ------------------------------------------------------
+
 # PDF EXTRACTION
-# ------------------------------------------------------
 def extract_text_pages(pdf_path: str) -> List[Tuple[int, str]]:
     doc = fitz.open(pdf_path)
     pages = []
@@ -128,9 +116,7 @@ def extract_text_pages(pdf_path: str) -> List[Tuple[int, str]]:
     doc.close()
     return pages
 
-# ------------------------------------------------------
 # CLEANING
-# ------------------------------------------------------
 _HEADER_FOOTER_PATTERN = re.compile(
     r"(^\s*page\s*\d+\s*$)|(^\s*\d+\s*/\s*\d+\s*$)|(^\s*confidential\s*$)",
     flags=re.IGNORECASE | re.MULTILINE,
@@ -146,9 +132,7 @@ def clean_text(text: str) -> str:
     text = _WHITESPACE_PATTERN.sub(" ", text)
     return text.strip()
 
-# ------------------------------------------------------
 # OIE (spaCy with fallback)
-# ------------------------------------------------------
 _spacy_nlp = None
 
 def _get_spacy():
@@ -209,9 +193,7 @@ def extract_triples(text: str, limit: int = 5):
 
     return triples or extract_naive_triples(text, limit)
 
-# ------------------------------------------------------
 # CELERY TASK
-# ------------------------------------------------------
 @celery_app.task(name="process_pdf")
 def process_pdf(pdf_id: str, object_key: str):
     db = SessionLocal()
@@ -239,17 +221,15 @@ def process_pdf(pdf_id: str, object_key: str):
             parents, children = chunk_document_page(cleaned, page_num)
             parent_db_ids = {}
 
-            # -------------------------------
             # INSERT PARENT CHUNKS
-            # -------------------------------
             for p in parents:
                 res = db.execute(
                     text("""
                         INSERT INTO pdf_chunks
                         (pdf_metadata_id, page_num, chunk_index, chunk_text,
                          normalized_text, length_chars, token_count,
-                         chunk_type, parent_chunk_id)
-                        VALUES (:pid, :pg, :idx, :txt, :norm, :len, :tokens, 'PARENT', NULL)
+                         chunk_type, parent_chunk_id, lexical_tsv)
+                        VALUES (:pid, :pg, :idx, :txt, :norm, :len, :tokens, 'PARENT', NULL, to_tsvector('english', :txt))
                         RETURNING id
                     """),
                     {
@@ -264,9 +244,8 @@ def process_pdf(pdf_id: str, object_key: str):
                 )
                 parent_db_ids[p.index] = res.fetchone()[0]
 
-            # -------------------------------
+            
             # INSERT CHILD CHUNKS
-            # -------------------------------
             for c in children:
                 parent_id = parent_db_ids.get(c.parent_index)
                 res = db.execute(
@@ -274,8 +253,8 @@ def process_pdf(pdf_id: str, object_key: str):
                         INSERT INTO pdf_chunks
                         (pdf_metadata_id, page_num, chunk_index, chunk_text,
                          normalized_text, length_chars, token_count,
-                         chunk_type, parent_chunk_id)
-                        VALUES (:pid, :pg, :idx, :txt, :norm, :len, :tokens, 'CHILD', :parent)
+                         chunk_type, parent_chunk_id, lexical_tsv)
+                        VALUES (:pid, :pg, :idx, :txt, :norm, :len, :tokens, 'CHILD', :parent, to_tsvector('english', :txt))
                         RETURNING id
                     """),
                     {
@@ -296,8 +275,15 @@ def process_pdf(pdf_id: str, object_key: str):
                         text("""
                             INSERT INTO pdf_triples
                             (pdf_metadata_id, chunk_id, page_num, chunk_index,
-                             subject, predicate, object)
-                            VALUES (:pid, :cid, :pg, :idx, :s, :p, :o)
+                             subject, predicate, object, triple_tsv)
+                            VALUES (:pid, :cid, :pg, :idx, :s, :p, :o, 
+                                 to_tsvector(
+                                        'english',
+                                        coalesce(:s, '') || ' ' ||
+                                        coalesce(:p, '') || ' ' ||
+                                        coalesce(:o, '')
+                                )
+                             )
                         """),
                         {
                             "pid": pdf_id,

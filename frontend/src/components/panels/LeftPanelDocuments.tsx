@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { HiUpload, HiTrash } from "react-icons/hi";
 import { documentsApi } from "@/api";
-import { formatFileSize, formatRelativeTime } from "@/utils/formatters";
+import { formatFileSize } from "@/utils/formatters";
 import { FILE_LIMITS } from "@/utils/constants";
 import type { Document } from "@/types";
 import { Loader } from "@/components/common";
@@ -29,39 +29,25 @@ export function LeftPanelDocuments({
     }
   }, []);
 
+  // Initial fetch
   useEffect(() => {
     fetchDocuments();
   }, [fetchDocuments]);
 
-useEffect(() => {
-  const hasProcessingDocs = documents.some(
-    d => d.status === "processing" || d.status === "uploading"
-  );
+  // Poll only while documents are processing
+  useEffect(() => {
+    const hasActiveDocs = documents.some(
+      d => d.status === "pending" || d.status === "processing"
+    );
 
-  if (!hasProcessingDocs) return;
+    if (!hasActiveDocs) return;
 
-  const interval = setInterval(() => {
-    fetchDocuments();
-  }, 3000); // poll every 3 seconds
+    const interval = setInterval(() => {
+      fetchDocuments();
+    }, 3000);
 
-  return () => clearInterval(interval);
-}, [documents, fetchDocuments]);
-
-
-useEffect(() => {
-  const hasPendingDocs = documents.some(
-    d => d.status === "PENDING" || d.status === "PROCESSING"
-  );
-
-  if (!hasPendingDocs) return;
-
-  const interval = setInterval(() => {
-    fetchDocuments();
-  }, 3000); // poll every 3 seconds
-
-  return () => clearInterval(interval);
-}, [documents, fetchDocuments]);
-
+    return () => clearInterval(interval);
+  }, [documents, fetchDocuments]);
 
   const onDrop = useCallback(
     async (files: File[]) => {
@@ -94,7 +80,6 @@ useEffect(() => {
 
   return (
     <div style={{ padding: 16, color: "var(--panel-text-primary)" }}>
-      {/* Upload Card */}
       <div
         {...getRootProps()}
         style={{
@@ -126,12 +111,7 @@ useEffect(() => {
 
           <div>
             <div style={{ fontWeight: 600 }}>Upload PDFs</div>
-            <div
-              style={{
-                fontSize: 12,
-                color: "var(--panel-text-muted)",
-              }}
-            >
+            <div style={{ fontSize: 12, color: "var(--panel-text-muted)" }}>
               Drag & drop or click to browse
             </div>
           </div>
@@ -140,7 +120,6 @@ useEffect(() => {
         <input {...getInputProps()} />
       </div>
 
-      {/* Upload progress */}
       {isUploading && uploadProgress !== null && (
         <div style={{ marginBottom: 14 }}>
           <div
@@ -163,7 +142,6 @@ useEffect(() => {
         </div>
       )}
 
-      {/* Header  */}
       <div
         style={{
           display: "flex",
@@ -192,7 +170,6 @@ useEffect(() => {
         </button>
       </div>
 
-      {/* List*/}
       {isLoading ? (
         <Loader text="Loading..." />
       ) : documents.length === 0 ? (
@@ -213,23 +190,19 @@ useEffect(() => {
               boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
             }}
           >
-            {/* Document info */}
             <div
               onClick={() => onSelectDocument?.(doc.id)}
               style={{
                 cursor: "pointer",
                 flex: 1,
-                minWidth: 0, // CRITICAL for overflow fix
+                minWidth: 0,
               }}
             >
               <div
                 style={{
                   fontWeight: 600,
                   fontSize: 13,
-                  lineHeight: 1.4,
                   marginBottom: 4,
-
-                  /* OVERFLOW FIX — SAME AS ORIGINAL LOGIC */
                   whiteSpace: "normal",
                   wordBreak: "break-word",
                 }}
@@ -237,40 +210,33 @@ useEffect(() => {
                 {doc.filename}
               </div>
 
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "var(--panel-text-muted)",
-                }}
-              >
+              <div style={{ fontSize: 12, color: "var(--panel-text-muted)" }}>
                 {formatFileSize(doc.file_size)} •{" "}
                 {new Date(doc.created_at + "Z").toLocaleString("en-IN", {
                   dateStyle: "medium",
                   timeStyle: "medium",
                 })}
-
               </div>
-              {doc.status === "PENDING" && (
+
+              {doc.status === "pending" && (
                 <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 4 }}>
                   Uploading…
                 </div>
               )}
 
-              {doc.status === "PROCESSING" && (
+              {doc.status === "processing" && (
                 <div style={{ fontSize: 11, color: "#3b82f6", marginTop: 4 }}>
                   Extracting text…
                 </div>
               )}
 
-              {doc.status === "COMPLETED" && (
+              {doc.status === "completed" && (
                 <div style={{ fontSize: 11, color: "#22c55e", marginTop: 4 }}>
                   Ready
                 </div>
               )}
-
             </div>
 
-            {/* Delete */}
             <button
               onClick={() => handleDelete(doc.id)}
               style={{
@@ -278,7 +244,6 @@ useEffect(() => {
                 border: "none",
                 color: "var(--danger)",
                 cursor: "pointer",
-                alignSelf: "flex-start",
               }}
             >
               <HiTrash size={18} />

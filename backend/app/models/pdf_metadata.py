@@ -3,6 +3,7 @@ from datetime import datetime
 from enum import Enum
 from sqlalchemy import String, DateTime, Integer, Text, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column
+from datetime import datetime
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
 

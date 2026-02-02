@@ -9,15 +9,14 @@ from app.models import PDFMetadata, ProcessingStatus
 from app.models.user import User
 from app.schemas import ApiResponse
 from app.dependencies import get_current_user
-from worker.tasks import process_pdf
+from app.worker.tasks import process_pdf
 from app.services.qdrant.qdrant_client import delete_pdf_vectors
 import uuid
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
-# ------------------------------------------------------------------------------
+
 # MinIO client
-# ------------------------------------------------------------------------------
 minio_client = Minio(
     settings.minio_endpoint,
     access_key=settings.minio_access_key,
@@ -44,9 +43,7 @@ async def cleanup_orphaned_file(object_key: str):
         pass
 
 
-# ------------------------------------------------------------------------------
 # UPLOAD PDFs
-# ------------------------------------------------------------------------------
 @router.post("/upload")
 async def upload_documents(
     files: list[UploadFile] = File(...),
@@ -58,6 +55,9 @@ async def upload_documents(
     results = []
     errors = []
     uploaded_keys = []
+
+    # NEW: track tasks to enqueue
+    tasks_to_enqueue: list[tuple[str, str]] = []
 
     for file in files:
         if not file.filename.lower().endswith(".pdf"):
@@ -95,9 +95,13 @@ async def upload_documents(
                 uploaded_by=current_user.id,
             )
             db.add(pdf_record)
+
+            # IMPORTANT: flush ONLY, do NOT enqueue yet
             await db.flush()
 
-            process_pdf.delay(str(pdf_record.id), object_key)
+            
+            # NEW: defer Celery dispatch
+            tasks_to_enqueue.append((str(pdf_record.id), object_key))
 
             results.append({
                 "id": str(pdf_record.id),
@@ -111,12 +115,19 @@ async def upload_documents(
                 await cleanup_orphaned_file(object_key)
             errors.append({"filename": file.filename, "error": str(e)})
 
+   
+    # COMMIT FIRST
     try:
         await db.commit()
     except Exception as e:
         for key in uploaded_keys:
             await cleanup_orphaned_file(key)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+    # NOW enqueue Celery tasks
+    for pdf_id, object_key in tasks_to_enqueue:
+        process_pdf.delay(pdf_id, object_key)
 
     return ApiResponse(
         success=True,
@@ -128,9 +139,7 @@ async def upload_documents(
     )
 
 
-# ------------------------------------------------------------------------------
 # LIST DOCUMENTS
-# ------------------------------------------------------------------------------
 @router.get("")
 async def list_documents(
     db: AsyncSession = Depends(get_db),
@@ -164,9 +173,7 @@ async def list_documents(
     )
 
 
-# ------------------------------------------------------------------------------
 # GET SINGLE DOCUMENT METADATA
-# ------------------------------------------------------------------------------
 @router.get("/{document_id}")
 async def get_document(
     document_id: str,
@@ -205,9 +212,8 @@ async def get_document(
     )
 
 
-# ------------------------------------------------------------------------------
+
 # DOWNLOAD PDF FILE
-# ------------------------------------------------------------------------------
 @router.get("/{document_id}/file")
 async def get_document_file(
     document_id: str,
@@ -247,9 +253,8 @@ async def get_document_file(
     )
 
 
-# ------------------------------------------------------------------------------
+
 # DELETE SINGLE DOCUMENT (MinIO + Qdrant + DB)
-# ------------------------------------------------------------------------------
 @router.delete("/{document_id}")
 async def delete_document(
     document_id: str,
@@ -288,9 +293,7 @@ async def delete_document(
     return ApiResponse(success=True, message="Document deleted")
 
 
-# ------------------------------------------------------------------------------
 # DELETE ALL DOCUMENTS (USER)
-# ------------------------------------------------------------------------------
 @router.delete("")
 async def delete_all_documents(
     db: AsyncSession = Depends(get_db),
