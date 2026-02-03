@@ -1,13 +1,17 @@
-from sentence_transformers import SentenceTransformer
 import asyncio
+from functools import lru_cache
+from sentence_transformers import SentenceTransformer
 from typing import Union, List
 from app.config import settings
 
-_model = SentenceTransformer(settings.embedding_model_name)
+
+@lru_cache(maxsize=1)
+def get_model() -> SentenceTransformer:
+    return SentenceTransformer(settings.embedding_model_name)
 
 
 def generate_embeddings(texts: List[str]) -> List[List[float]]:
-    return _model.encode(
+    return get_model().encode(
         texts,
         convert_to_numpy=True,
         normalize_embeddings=True,

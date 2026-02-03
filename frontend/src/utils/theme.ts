@@ -12,4 +12,5 @@ export function loadTheme() {
   const saved = localStorage.getItem(THEME_KEY) as Theme | null;
   const theme = saved || "light";
   document.documentElement.dataset.theme = theme;
+  window.electron?.saveTheme(theme);
 }

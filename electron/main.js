@@ -34,8 +34,12 @@ function waitForHealth(url, timeoutMs = 120000) {
   })
 }
 
-const projectRoot = path.join(__dirname, "..")
-const dockerComposePath = path.join(projectRoot, "docker", "docker-compose.yml")
+const isPackaged = app.isPackaged
+
+const appRoot = isPackaged ? __dirname : path.join(__dirname, "..")
+const dockerComposePath = isPackaged
+  ? path.join(process.resourcesPath, "docker", "docker-compose.yml")
+  : path.join(appRoot, "docker", "docker-compose.yml")
 
 let splashWindow = null
 let mainWindow = null
@@ -76,10 +80,11 @@ function createSplashWindow() {
     },
   })
 
-  splashWindow.loadFile(
-    path.join(projectRoot, "electron", "splash.html"),
-    { query: { theme } }
-  )
+  const splashPath = isPackaged
+    ? path.join(appRoot, "splash.html")
+    : path.join(appRoot, "electron", "splash.html")
+
+  splashWindow.loadFile(splashPath, { query: { theme } })
 }
 
 function createMainWindow() {
@@ -92,9 +97,11 @@ function createMainWindow() {
     },
   })
 
-  mainWindow.loadFile(
-    path.join(projectRoot, "frontend", "dist", "index.html")
-  )
+  const frontendPath = isPackaged
+    ? path.join(process.resourcesPath, "frontend", "dist", "index.html")
+    : path.join(appRoot, "frontend", "dist", "index.html")
+
+  mainWindow.loadFile(frontendPath)
 
   globalShortcut.register("CommandOrControl+R", () => {
     mainWindow.reload()

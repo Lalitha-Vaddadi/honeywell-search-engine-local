@@ -17,8 +17,25 @@
     "asar": true,
     "files": [
       "main.js",
-      "../frontend/dist/**",
-      "../docker/docker-compose.yml"
+      "rendererBridge.js",
+      "splash.html",
+      "splash.js",
+      "state.js",
+      "state.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../frontend/dist",
+        "to": "frontend/dist"
+      },
+      {
+        "from": "../docker/docker-compose.yml",
+        "to": "docker/docker-compose.yml"
+      },
+      {
+        "from": "../docker/.env.example",
+        "to": "docker/.env.example"
+      }
     ],
     "win": {
       "target": "nsis"
